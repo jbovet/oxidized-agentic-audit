@@ -68,6 +68,8 @@ impl Scanner for SecretsScanner {
                     skip_reason: None,
                     error: Some(format!("Failed to create temp file: {}", e)),
                     duration_ms: start.elapsed().as_millis() as u64,
+                    scanner_score: None,
+                    scanner_grade: None,
                 };
             }
         };
@@ -96,6 +98,8 @@ impl Scanner for SecretsScanner {
                     skip_reason: None,
                     error: Some(format!("Failed to run gitleaks: {}", e)),
                     duration_ms: start.elapsed().as_millis() as u64,
+                    scanner_score: None,
+                    scanner_grade: None,
                 };
             }
         };
@@ -113,6 +117,8 @@ impl Scanner for SecretsScanner {
                     skip_reason: None,
                     error: Some(format!("gitleaks error (exit {}): {}", code, stderr.trim())),
                     duration_ms: start.elapsed().as_millis() as u64,
+                    scanner_score: None,
+                    scanner_grade: None,
                 };
             }
         }
@@ -129,6 +135,8 @@ impl Scanner for SecretsScanner {
                     skip_reason: None,
                     error: Some(format!("Failed to read gitleaks report: {e}")),
                     duration_ms: start.elapsed().as_millis() as u64,
+                    scanner_score: None,
+                    scanner_grade: None,
                 };
             }
         };
@@ -144,6 +152,8 @@ impl Scanner for SecretsScanner {
                     skip_reason: None,
                     error: Some(format!("Failed to parse gitleaks report: {}", e)),
                     duration_ms: start.elapsed().as_millis() as u64,
+                    scanner_score: None,
+                    scanner_grade: None,
                 };
             }
         };
@@ -219,6 +229,8 @@ impl Scanner for SecretsScanner {
             skip_reason: None,
             error: None,
             duration_ms: start.elapsed().as_millis() as u64,
+            scanner_score: None,
+            scanner_grade: None,
         }
     }
 }

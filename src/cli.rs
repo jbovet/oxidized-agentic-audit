@@ -43,6 +43,11 @@ pub enum Commands {
         /// Path to a custom configuration file.
         #[arg(long)]
         config: Option<PathBuf>,
+
+        /// Fail if the security score is below this threshold (0–100).
+        /// Useful as a CI gate: `--min-score 80` rejects any skill scoring below 80.
+        #[arg(long, value_name = "N")]
+        min_score: Option<u8>,
     },
 
     /// Audit every skill directory inside a collection directory.
@@ -62,6 +67,10 @@ pub enum Commands {
         /// Path to a custom configuration file.
         #[arg(long)]
         config: Option<PathBuf>,
+
+        /// Fail if any skill's security score is below this threshold (0–100).
+        #[arg(long, value_name = "N")]
+        min_score: Option<u8>,
     },
 
     /// Check which external scanner tools are installed and available.

@@ -513,6 +513,8 @@ impl Scanner for FrontmatterScanner {
                 skip_reason: None,
                 error: None,
                 duration_ms: start.elapsed().as_millis() as u64,
+                scanner_score: None,
+                scanner_grade: None,
             };
         }
 
@@ -542,6 +544,8 @@ impl Scanner for FrontmatterScanner {
                     skip_reason: None,
                     error: Some(format!("Failed to read SKILL.md: {e}")),
                     duration_ms: start.elapsed().as_millis() as u64,
+                    scanner_score: None,
+                    scanner_grade: None,
                 };
             }
         };
@@ -628,6 +632,8 @@ impl Scanner for FrontmatterScanner {
             skip_reason: None,
             error: None,
             duration_ms: start.elapsed().as_millis() as u64,
+            scanner_score: None,
+            scanner_grade: None,
         }
     }
 }

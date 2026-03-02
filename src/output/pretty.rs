@@ -73,7 +73,20 @@ pub fn format(report: &AuditReport) -> String {
         } else {
             let count = result.findings.len();
             let scanned = result.files_scanned;
-            format!("{} findings, {} files scanned", count, scanned)
+            let base = format!("{} findings, {} files scanned", count, scanned);
+            // Append scanner-level sub-score when available.
+            match (&result.scanner_score, &result.scanner_grade) {
+                (Some(score), Some(grade)) => {
+                    let score_part = format!("  Score: {}/100 ({})", score, grade);
+                    let score_colored = match *score {
+                        90..=100 => score_part.green().to_string(),
+                        60..=89 => score_part.yellow().to_string(),
+                        _ => score_part.red().to_string(),
+                    };
+                    format!("{base}{score_colored}")
+                }
+                _ => base,
+            }
         };
 
         out.push_str(&format!(

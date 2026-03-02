@@ -42,6 +42,8 @@ fn build_report(finding: Finding, suppression: Suppression) -> AuditReport {
         skip_reason: None,
         error: None,
         duration_ms: 0,
+        scanner_score: None,
+        scanner_grade: None,
     };
     AuditReport::from_results("test-skill", vec![result], &[suppression], false)
 }
@@ -140,6 +142,8 @@ fn inverted_line_range_does_not_suppress_finding() {
         skip_reason: None,
         error: None,
         duration_ms: 0,
+        scanner_score: None,
+        scanner_grade: None,
     };
     let report = AuditReport::from_results("test-skill", vec![result], &[suppression], false);
     assert!(
@@ -166,6 +170,8 @@ fn valid_line_range_suppresses_finding_within_range() {
         skip_reason: None,
         error: None,
         duration_ms: 0,
+        scanner_score: None,
+        scanner_grade: None,
     };
     let report = AuditReport::from_results("test-skill", vec![result], &[suppression], false);
     assert!(
@@ -188,6 +194,8 @@ fn make_report_from_findings(findings: Vec<Finding>) -> AuditReport {
         skip_reason: None,
         error: None,
         duration_ms: 0,
+        scanner_score: None,
+        scanner_grade: None,
     };
     AuditReport::from_results("score-test", vec![result], &[], false)
 }
@@ -326,4 +334,136 @@ fn grade_d_boundary_at_40() {
     let report = make_report_from_findings(findings);
     assert_eq!(report.security_score, 40);
     assert_eq!(report.security_grade, SecurityGrade::D);
+}
+
+// ---------------------------------------------------------------------------
+// Per-scanner sub-score tests
+// ---------------------------------------------------------------------------
+
+fn make_scanner_result(name: &str, findings: Vec<Finding>) -> ScanResult {
+    ScanResult {
+        scanner_name: name.to_string(),
+        findings,
+        files_scanned: 1,
+        skipped: false,
+        skip_reason: None,
+        error: None,
+        duration_ms: 0,
+        scanner_score: None,
+        scanner_grade: None,
+    }
+}
+
+#[test]
+fn scanner_with_no_findings_scores_100() {
+    let result = make_scanner_result("bash_patterns", vec![]);
+    let report = AuditReport::from_results("skill", vec![result], &[], false);
+    let bash = report
+        .scanner_results
+        .iter()
+        .find(|r| r.scanner_name == "bash_patterns")
+        .unwrap();
+    assert_eq!(bash.scanner_score, Some(100));
+    assert_eq!(bash.scanner_grade, Some(SecurityGrade::A));
+}
+
+#[test]
+fn scanner_with_findings_gets_degraded_score() {
+    // 1 critical error → -30 → score 70
+    let result = make_scanner_result("bash_patterns", vec![error_finding("bash/CAT-A-001")]);
+    let report = AuditReport::from_results("skill", vec![result], &[], false);
+    let bash = report
+        .scanner_results
+        .iter()
+        .find(|r| r.scanner_name == "bash_patterns")
+        .unwrap();
+    assert_eq!(bash.scanner_score, Some(70));
+    assert_eq!(bash.scanner_grade, Some(SecurityGrade::C));
+}
+
+#[test]
+fn skipped_scanner_has_no_score() {
+    let skipped = ScanResult::skipped("semgrep", "semgrep not found on PATH");
+    let report = AuditReport::from_results("skill", vec![skipped], &[], false);
+    let semgrep = report
+        .scanner_results
+        .iter()
+        .find(|r| r.scanner_name == "semgrep")
+        .unwrap();
+    assert_eq!(
+        semgrep.scanner_score, None,
+        "Skipped scanner must have no score"
+    );
+    assert_eq!(
+        semgrep.scanner_grade, None,
+        "Skipped scanner must have no grade"
+    );
+}
+
+#[test]
+fn scanner_scores_are_independent_per_scanner() {
+    // bash scanner has errors; prompt scanner is clean.
+    // Each should get its own score, not the aggregate.
+    let bash_result = make_scanner_result(
+        "bash_patterns",
+        vec![
+            error_finding("bash/CAT-A-001"), // -30
+        ],
+    );
+    let prompt_result = make_scanner_result("prompt", vec![]);
+
+    let report = AuditReport::from_results("skill", vec![bash_result, prompt_result], &[], false);
+
+    let bash = report
+        .scanner_results
+        .iter()
+        .find(|r| r.scanner_name == "bash_patterns")
+        .unwrap();
+    let prompt = report
+        .scanner_results
+        .iter()
+        .find(|r| r.scanner_name == "prompt")
+        .unwrap();
+
+    assert_eq!(
+        bash.scanner_score,
+        Some(70),
+        "bash scanner should score 70 (one critical error)"
+    );
+    assert_eq!(
+        prompt.scanner_score,
+        Some(100),
+        "prompt scanner should score 100 (no findings)"
+    );
+}
+
+#[test]
+fn scanner_score_uses_raw_findings_before_suppression() {
+    // The scanner result has one warning finding.
+    // Even when that finding is suppressed at the report level,
+    // the scanner's own score reflects the raw (pre-suppression) finding.
+    let result = make_scanner_result("bash_patterns", vec![warning_finding()]);
+    let suppression = Suppression {
+        rule: "bash/CAT-H1".to_string(),
+        file: "".to_string(),
+        lines: None,
+        reason: "approved".to_string(),
+        ticket: None,
+    };
+    let report = AuditReport::from_results("skill", vec![result], &[suppression], false);
+
+    // The finding is suppressed at the aggregate level → no active findings
+    assert!(report.findings.is_empty(), "Finding should be suppressed");
+    // But the scanner still saw it → scanner score should reflect the warning (-5 → 95)
+    let bash = report
+        .scanner_results
+        .iter()
+        .find(|r| r.scanner_name == "bash_patterns")
+        .unwrap();
+    assert_eq!(
+        bash.scanner_score,
+        Some(95),
+        "Scanner score should reflect raw findings before suppression"
+    );
+    assert_eq!(bash.scanner_grade, Some(SecurityGrade::A));
 }
