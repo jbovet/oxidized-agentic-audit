@@ -93,6 +93,10 @@ The `oxidized-skills` GitHub Action audits skill directories in CI, produces a S
     sarif_file: ${{ steps.audit.outputs.sarif-file }}
 ```
 
+Findings appear directly in the **Security → Code scanning** tab on GitHub:
+
+![GitHub Code Scanning results showing oxidized-skills findings](assets/github-code-scanning.png)
+
 ---
 
 ## Quick Start
