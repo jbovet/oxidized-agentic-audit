@@ -62,6 +62,8 @@ impl Scanner for ShellCheckScanner {
                 skip_reason: None,
                 error: None,
                 duration_ms: start.elapsed().as_millis() as u64,
+                scanner_score: None,
+                scanner_grade: None,
             };
         }
 
@@ -144,6 +146,8 @@ impl Scanner for ShellCheckScanner {
             skip_reason: None,
             error: error_msg,
             duration_ms: start.elapsed().as_millis() as u64,
+            scanner_score: None,
+            scanner_grade: None,
         }
     }
 }

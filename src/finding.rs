@@ -95,6 +95,14 @@ pub struct ScanResult {
     pub error: Option<String>,
     /// Wall-clock time for this scanner, in milliseconds.
     pub duration_ms: u64,
+    /// Security score (0–100) for this scanner's raw findings.
+    ///
+    /// Computed from the scanner's own findings before suppressions are applied.
+    /// `None` when the scanner was skipped, disabled, or encountered an error.
+    pub scanner_score: Option<u8>,
+    /// Letter grade derived from [`scanner_score`](Self::scanner_score).
+    /// `None` when `scanner_score` is `None`.
+    pub scanner_grade: Option<SecurityGrade>,
 }
 
 impl ScanResult {
@@ -121,6 +129,8 @@ impl ScanResult {
             skip_reason: Some(reason.to_string()),
             error: None,
             duration_ms: 0,
+            scanner_score: None,
+            scanner_grade: None,
         }
     }
 }
@@ -199,6 +209,21 @@ impl AuditReport {
         strict: bool,
     ) -> Self {
         let files_scanned: usize = results.iter().map(|r| r.files_scanned).sum();
+
+        // Pre-pass: annotate each scanner result with its own score, computed
+        // on the raw (pre-suppression) findings.  Skipped / errored scanners
+        // receive `None` because there are no meaningful findings to score.
+        let results: Vec<ScanResult> = results
+            .into_iter()
+            .map(|mut r| {
+                if !r.skipped && r.error.is_none() {
+                    let (score, grade) = compute_security_score(&r.findings);
+                    r.scanner_score = Some(score);
+                    r.scanner_grade = Some(grade);
+                }
+                r
+            })
+            .collect();
 
         let mut active = Vec::new();
         let mut suppressed = Vec::new();

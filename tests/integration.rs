@@ -201,6 +201,95 @@ fn audit_all_nonexistent_path_exits_2() {
         .code(2);
 }
 
+// ── --min-score ───────────────────────────────────────────────────────────────
+
+#[test]
+fn min_score_passes_when_clean_skill_meets_threshold() {
+    // clean-skill scores 100 — any reasonable min-score should pass.
+    oxidized_skills()
+        .args(["audit", "tests/fixtures/clean-skill", "--min-score", "80"])
+        .assert()
+        .success();
+}
+
+#[test]
+fn min_score_fails_when_score_below_threshold() {
+    // dirty-skill scores 0 — threshold of 1 should fail.
+    oxidized_skills()
+        .args(["audit", "tests/fixtures/dirty-skill", "--min-score", "1"])
+        .assert()
+        .code(1)
+        .stderr(predicate::str::contains("below the required minimum"));
+}
+
+#[test]
+fn min_score_error_message_shows_score_and_threshold() {
+    oxidized_skills()
+        .args(["audit", "tests/fixtures/dirty-skill", "--min-score", "50"])
+        .assert()
+        .code(1)
+        .stderr(predicate::str::contains("50"));
+}
+
+#[test]
+fn min_score_zero_always_passes_clean_skill() {
+    // --min-score 0 is a no-op; clean skill passes.
+    oxidized_skills()
+        .args(["audit", "tests/fixtures/clean-skill", "--min-score", "0"])
+        .assert()
+        .success();
+}
+
+#[test]
+fn min_score_audit_all_fails_when_any_skill_below_threshold() {
+    // fixtures/ contains dirty-skill (score 0) — threshold of 50 must fail.
+    oxidized_skills()
+        .args(["audit-all", "tests/fixtures", "--min-score", "50"])
+        .assert()
+        .code(1);
+}
+
+#[test]
+fn min_score_audit_all_shows_marker_in_summary() {
+    // The collection summary should annotate skills below the threshold with [< N].
+    oxidized_skills()
+        .args(["audit-all", "tests/fixtures", "--min-score", "50"])
+        .assert()
+        .code(1)
+        .stdout(predicate::str::contains("[< 50]"));
+}
+
+#[test]
+fn min_score_audit_all_shows_below_min_count_in_footer() {
+    oxidized_skills()
+        .args(["audit-all", "tests/fixtures", "--min-score", "50"])
+        .assert()
+        .code(1)
+        .stdout(predicate::str::contains("below min-score"));
+}
+
+#[test]
+fn min_score_audit_all_passes_when_all_above_threshold() {
+    let dir = tempfile::tempdir().unwrap();
+    let skill_md = "---\nname: test-skill\ndescription: A test skill. Use when testing.\nallowed-tools:\n  - Read\n---\n# Test\n";
+    for name in &["alpha", "beta"] {
+        let skill_dir = dir.path().join(name);
+        std::fs::create_dir_all(&skill_dir).unwrap();
+        std::fs::write(skill_dir.join("SKILL.md"), skill_md).unwrap();
+    }
+
+    // Both skills are clean (score 100) — min-score 80 must succeed.
+    oxidized_skills()
+        .args([
+            "audit-all",
+            dir.path().to_str().unwrap(),
+            "--min-score",
+            "80",
+        ])
+        .assert()
+        .success();
+}
+
 // ── shellcheck fixture ────────────────────────────────────────────────────────
 
 #[test]

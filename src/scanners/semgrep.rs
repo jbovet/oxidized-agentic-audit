@@ -111,6 +111,8 @@ impl Scanner for SemgrepScanner {
                     skip_reason: None,
                     error: Some(format!("Failed to run semgrep: {}", e)),
                     duration_ms: start.elapsed().as_millis() as u64,
+                    scanner_score: None,
+                    scanner_grade: None,
                 };
             }
         };
@@ -137,6 +139,8 @@ impl Scanner for SemgrepScanner {
                             )),
                             error: None,
                             duration_ms: start.elapsed().as_millis() as u64,
+                            scanner_score: None,
+                            scanner_grade: None,
                         };
                     }
                     std::thread::sleep(poll_interval);
@@ -150,6 +154,8 @@ impl Scanner for SemgrepScanner {
                         skip_reason: None,
                         error: Some(format!("Failed to wait for semgrep: {}", e)),
                         duration_ms: start.elapsed().as_millis() as u64,
+                        scanner_score: None,
+                        scanner_grade: None,
                     };
                 }
             }
@@ -166,6 +172,8 @@ impl Scanner for SemgrepScanner {
                     skip_reason: None,
                     error: Some(format!("Failed to read semgrep output: {}", e)),
                     duration_ms: start.elapsed().as_millis() as u64,
+                    scanner_score: None,
+                    scanner_grade: None,
                 };
             }
         };
@@ -181,6 +189,8 @@ impl Scanner for SemgrepScanner {
                 skip_reason: None,
                 error: None,
                 duration_ms: start.elapsed().as_millis() as u64,
+                scanner_score: None,
+                scanner_grade: None,
             };
         }
 
@@ -195,6 +205,8 @@ impl Scanner for SemgrepScanner {
                     skip_reason: None,
                     error: Some(format!("Failed to parse semgrep JSON: {}", e)),
                     duration_ms: start.elapsed().as_millis() as u64,
+                    scanner_score: None,
+                    scanner_grade: None,
                 };
             }
         };
@@ -210,6 +222,8 @@ impl Scanner for SemgrepScanner {
                     skip_reason: None,
                     error: None,
                     duration_ms: start.elapsed().as_millis() as u64,
+                    scanner_score: None,
+                    scanner_grade: None,
                 };
             }
         };
@@ -289,6 +303,8 @@ impl Scanner for SemgrepScanner {
             skip_reason: None,
             error: None,
             duration_ms: start.elapsed().as_millis() as u64,
+            scanner_score: None,
+            scanner_grade: None,
         }
     }
 }

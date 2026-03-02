@@ -15,6 +15,7 @@ fn main() {
             output: output_path,
             strict,
             config: config_path,
+            min_score,
         } => {
             if !path.exists() {
                 eprintln!("Error: path does not exist: {}", path.display());
@@ -62,6 +63,17 @@ fn main() {
                 print!("{formatted}");
             }
 
+            // --min-score gate: fail even when the audit itself passed.
+            if let Some(min) = min_score {
+                if report.security_score < min {
+                    eprintln!(
+                        "Error: security score {}/100 is below the required minimum of {}",
+                        report.security_score, min
+                    );
+                    std::process::exit(1);
+                }
+            }
+
             std::process::exit(if report.passed { 0 } else { 1 });
         }
 
@@ -70,6 +82,7 @@ fn main() {
             format,
             strict,
             config: config_path,
+            min_score,
         } => {
             if !path.exists() {
                 eprintln!("Error: path does not exist: {}", path.display());
@@ -104,11 +117,14 @@ fn main() {
 
             // Print collection summary for pretty format
             if matches!(format, output::OutputFormat::Pretty) {
-                print!("{}", format_collection_summary(&path, &reports));
+                print!("{}", format_collection_summary(&path, &reports, min_score));
             }
 
             let all_passed = reports.iter().all(|r| r.passed);
-            std::process::exit(if all_passed { 0 } else { 1 });
+            let all_above_min = min_score
+                .map(|min| reports.iter().all(|r| r.security_score >= min))
+                .unwrap_or(true);
+            std::process::exit(if all_passed && all_above_min { 0 } else { 1 });
         }
 
         Commands::CheckTools => {
@@ -209,7 +225,14 @@ fn find_skill_dirs(path: &std::path::Path) -> Vec<std::path::PathBuf> {
 }
 
 /// Renders a compact summary table after all individual skill reports have been printed.
-fn format_collection_summary(collection_path: &std::path::Path, reports: &[AuditReport]) -> String {
+///
+/// When `min_score` is `Some(n)`, rows whose score is below `n` are annotated
+/// with a red `[< N]` marker so failures are immediately visible.
+fn format_collection_summary(
+    collection_path: &std::path::Path,
+    reports: &[AuditReport],
+    min_score: Option<u8>,
+) -> String {
     use oxidized_skills::finding::AuditStatus;
 
     let mut out = String::new();
@@ -231,6 +254,7 @@ fn format_collection_summary(collection_path: &std::path::Path, reports: &[Audit
     let mut n_failed = 0usize;
     let mut n_warned = 0usize;
     let mut n_passed = 0usize;
+    let mut n_below_min = 0usize;
 
     for report in reports {
         let (icon, status_str) = match report.status {
@@ -266,25 +290,48 @@ fn format_collection_summary(collection_path: &std::path::Path, reports: &[Audit
             }
         };
 
+        // Append a min-score failure marker when the threshold is active.
+        let min_score_marker = match min_score {
+            Some(min) if report.security_score < min => {
+                n_below_min += 1;
+                format!(" {}", format!("[< {min}]").red().bold())
+            }
+            _ => String::new(),
+        };
+
         let (errors, warnings, info) = report.count_by_severity();
         out.push_str(&format!(
-            "  {icon}  {name:<22} {status}  {score}  {e}e {w}w {i}i\n",
+            "  {icon}  {name:<22} {status}  {score}  {e} err, {w} warn, {i} info{marker}\n",
             name = report.skill,
             status = status_str,
             score = score_col,
             e = errors,
             w = warnings,
             i = info,
+            marker = min_score_marker,
         ));
     }
 
     out.push_str(&format!("{}\n", separator.dimmed()));
-    out.push_str(&format!(
-        "  Total: {}  {}  {}\n",
+
+    let mut footer = format!(
+        "  Total: {}  {}  {}",
         format!("{} failed", n_failed).red().bold(),
         format!("{} warnings", n_warned).yellow().bold(),
         format!("{} passed", n_passed).green().bold(),
-    ));
+    );
+    if let Some(min) = min_score {
+        if n_below_min > 0 {
+            footer.push_str(&format!(
+                "  {}",
+                format!("{} below min-score ({})", n_below_min, min)
+                    .red()
+                    .bold()
+            ));
+        }
+    }
+    footer.push('\n');
+    out.push_str(&footer);
 
     out
 }

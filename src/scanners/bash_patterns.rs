@@ -438,6 +438,8 @@ impl Scanner for BashPatternScanner {
             skip_reason: None,
             error: None,
             duration_ms: start.elapsed().as_millis() as u64,
+            scanner_score: None,
+            scanner_grade: None,
         }
     }
 }

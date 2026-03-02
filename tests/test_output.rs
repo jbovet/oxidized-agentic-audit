@@ -144,14 +144,20 @@ fn dirty_skill_pretty_output_shows_degraded_score() {
     let pretty = output::format_report(&report, &OutputFormat::Pretty);
 
     let stripped = strip_ansi(&pretty);
-    // Score must appear and be below 100
+
+    // The summary "Result:" line must contain a Score field.
+    let result_line = stripped
+        .lines()
+        .find(|l| l.contains("Result:"))
+        .expect("Pretty output should contain a Result: summary line");
+
     assert!(
-        stripped.contains("Score:"),
-        "Pretty output should always contain a Score field"
+        result_line.contains("Score:"),
+        "Result line should contain Score field, got: {result_line}"
     );
     assert!(
-        !stripped.contains("Score: 100/100"),
-        "Dirty skill must not show a perfect score"
+        !result_line.contains("Score: 100/100"),
+        "Dirty skill summary must not show a perfect score, got: {result_line}"
     );
 }
 
