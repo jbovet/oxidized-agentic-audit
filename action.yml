@@ -1,5 +1,5 @@
 name: oxidized-skills
-description: Security auditing for AI agent skills -scans files for prompt injection, dangerous bash patterns, and frontmatter violations
+description: Security auditing for AI agent skills - scans files for prompt injection, dangerous bash patterns, and frontmatter violations
 author: jbovet
 
 inputs:
