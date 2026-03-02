@@ -5,7 +5,7 @@
 //! - [`Finding`] — a single security issue detected by a scanner.
 //! - [`ScanResult`] — aggregated output from one scanner run.
 //! - [`AuditReport`] — the final report combining all scanners.
-//! - [`Severity`], [`AuditStatus`], [`RiskLevel`] — classification enums.
+//! - [`Severity`], [`AuditStatus`], [`RiskLevel`], [`SecurityGrade`] — classification enums.
 
 use std::fmt;
 use std::path::PathBuf;
@@ -154,6 +154,18 @@ pub struct AuditReport {
     pub status: AuditStatus,
     /// Overall risk assessment.
     pub risk_level: RiskLevel,
+    /// Numeric security score from 0 (worst) to 100 (best).
+    ///
+    /// Computed by deducting points per active finding:
+    /// - Critical error (RCE/backdoor/prompt): −30
+    /// - Regular error: −15
+    /// - Warning: −5
+    /// - Info: −1
+    ///
+    /// The score is clamped to [0, 100].
+    pub security_score: u8,
+    /// Letter grade derived from [`security_score`](Self::security_score).
+    pub security_grade: SecurityGrade,
     /// Total number of files examined across all scanners.
     pub files_scanned: usize,
     /// Per-scanner results (including skipped scanners).
@@ -210,6 +222,7 @@ impl AuditReport {
 
         let status = compute_status(&active, strict);
         let risk_level = compute_risk_level(&active);
+        let (security_score, security_grade) = compute_security_score(&active);
         let passed = matches!(status, AuditStatus::Passed);
 
         AuditReport {
@@ -218,6 +231,8 @@ impl AuditReport {
             audit_timestamp: chrono::Utc::now().to_rfc3339(),
             status,
             risk_level,
+            security_score,
+            security_grade,
             files_scanned,
             scanner_results: results,
             findings: active,
@@ -299,6 +314,38 @@ pub enum RiskLevel {
     Critical,
 }
 
+/// Letter-grade summary of a skill's security posture.
+///
+/// Derived from [`AuditReport::security_score`]:
+///
+/// | Score   | Grade |
+/// |---------|-------|
+/// | 90–100  | `A`   |
+/// | 75–89   | `B`   |
+/// | 60–74   | `C`   |
+/// | 40–59   | `D`   |
+/// | 0–39    | `F`   |
+#[derive(Debug, Clone, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
+pub enum SecurityGrade {
+    A,
+    B,
+    C,
+    D,
+    F,
+}
+
+impl fmt::Display for SecurityGrade {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        match self {
+            SecurityGrade::A => write!(f, "A"),
+            SecurityGrade::B => write!(f, "B"),
+            SecurityGrade::C => write!(f, "C"),
+            SecurityGrade::D => write!(f, "D"),
+            SecurityGrade::F => write!(f, "F"),
+        }
+    }
+}
+
 fn compute_status(findings: &[Finding], strict: bool) -> AuditStatus {
     // Single pass: track both flags simultaneously.
     let (has_errors, has_warnings) =
@@ -349,6 +396,34 @@ fn compute_risk_level(findings: &[Finding]) -> RiskLevel {
     } else {
         RiskLevel::Low
     }
+}
+
+fn compute_security_score(findings: &[Finding]) -> (u8, SecurityGrade) {
+    // Deduct points per finding: critical errors cost the most.
+    // The rule ID prefixes mirror `compute_risk_level` for consistency.
+    let deduction: u32 = findings.iter().fold(0u32, |acc, f| {
+        let pts: u32 = match f.severity {
+            Severity::Error => {
+                let is_critical = f.rule_id.starts_with("bash/CAT-A")
+                    || f.rule_id.starts_with("bash/CAT-D")
+                    || f.rule_id.starts_with("prompt/");
+                if is_critical { 30 } else { 15 }
+            }
+            Severity::Warning => 5,
+            Severity::Info => 1,
+        };
+        acc + pts
+    });
+
+    let score = (100u32.saturating_sub(deduction)).min(100) as u8;
+    let grade = match score {
+        90..=100 => SecurityGrade::A,
+        75..=89 => SecurityGrade::B,
+        60..=74 => SecurityGrade::C,
+        40..=59 => SecurityGrade::D,
+        _ => SecurityGrade::F,
+    };
+    (score, grade)
 }
 
 fn find_suppression<'a>(

@@ -29,6 +29,7 @@
 - **Secret scanning** — gitleaks wrapper, automatically skipped when tool is not installed
 - **Static analysis** — semgrep wrapper with 30-second timeout (gracefully skips when network is blocked or tool is unavailable)
 - **Collection directory support** — `audit-all` audits every skill in a directory at once with a summary table; `audit` detects collection directories and shows helpful hints
+- **Security score** — Every audit produces a numeric score (0–100) and letter grade (A–F); shown inline in the terminal, included as top-level fields in JSON, and embedded in `run.properties` in SARIF
 - **Multiple output formats** — Pretty terminal, JSON, and SARIF 2.1.0 (compatible with GitHub Code Scanning)
 - **Suppression system** — Inline `# audit:ignore` (or `# oxidized-skills:ignore`) trailing comments and `.oxidized-skills-ignore` file with ticket tracking
 - **Configurable allowlists** — Registry allowlist enforced for `pkg/F3-registry`; domain allowlist enforced for `bash/CAT-H1` (outbound HTTP to approved domains is suppressed)
@@ -299,6 +300,72 @@ Run `oxidized-skills check-tools` to see which external tools are available in y
 | `pkg/F1-pip` | Warning | pip install without --index-url |
 | `pkg/F2-unpinned` | Warning | @latest unpinned version |
 | `pkg/F3-registry` | Warning | Unapproved registry URL |
+
+## Security Score
+
+Every audit computes a numeric security score (0–100) and a letter grade (A–F) based on the active (non-suppressed) findings.
+
+### Scoring model
+
+Points are deducted per finding:
+
+| Finding type | Deduction |
+|---|---|
+| Critical error — RCE, reverse shell, prompt injection (`bash/CAT-A*`, `bash/CAT-D*`, `prompt/*`) | −30 |
+| Regular error | −15 |
+| Warning | −5 |
+| Info | −1 |
+
+The score is clamped to `[0, 100]`. Suppressed findings do not affect the score.
+
+### Grade bands
+
+| Score | Grade |
+|---|---|
+| 90–100 | **A** |
+| 75–89 | **B** |
+| 60–74 | **C** |
+| 40–59 | **D** |
+| 0–39 | **F** |
+
+### Where the score appears
+
+**Pretty terminal output** — shown on the summary line, color-coded (green ≥90, yellow 60–89, red <60):
+
+```
+Result: FAILED  |  Score: 40/100 (D)  |  3 errors, 2 warnings, 0 info, 0 suppressed
+```
+
+**Collection summary table** — a score column next to each skill row:
+
+```
+  ✗  my-skill               FAILED    40/100 (D)  3e 2w 0i
+  ✓  clean-skill            PASSED   100/100 (A)  0e 0w 0i
+```
+
+**JSON output** — `security_score` (integer) and `security_grade` (string) as top-level fields:
+
+```json
+{
+  "security_score": 40,
+  "security_grade": "D",
+  ...
+}
+```
+
+**SARIF output** — embedded in `runs[0].properties` following SARIF 2.1.0 §3.19, compatible with GitHub Code Scanning and VS Code SARIF Viewer:
+
+```json
+{
+  "runs": [{
+    "properties": {
+      "security_grade": "D",
+      "security_score": 40
+    },
+    ...
+  }]
+}
+```
 
 ## Configuration
 

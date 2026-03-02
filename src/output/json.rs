@@ -12,6 +12,8 @@ struct JsonOutput<'a> {
     audit_timestamp: &'a str,
     status: &'a crate::finding::AuditStatus,
     risk_level: &'a crate::finding::RiskLevel,
+    security_score: u8,
+    security_grade: &'a crate::finding::SecurityGrade,
     passed: bool,
     summary: Summary,
     findings: &'a [crate::finding::Finding],
@@ -41,6 +43,8 @@ pub fn format(report: &AuditReport) -> String {
         audit_timestamp: &report.audit_timestamp,
         status: &report.status,
         risk_level: &report.risk_level,
+        security_score: report.security_score,
+        security_grade: &report.security_grade,
         passed: report.passed,
         summary: {
             // Single pass over findings instead of three separate iterations.

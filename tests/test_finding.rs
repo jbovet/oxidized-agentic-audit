@@ -1,7 +1,7 @@
 use std::path::PathBuf;
 
 use oxidized_skills::config::Suppression;
-use oxidized_skills::finding::{AuditReport, Finding, ScanResult, Severity};
+use oxidized_skills::finding::{AuditReport, Finding, ScanResult, SecurityGrade, Severity};
 
 // ---------------------------------------------------------------------------
 // Helpers
@@ -173,4 +173,157 @@ fn valid_line_range_suppresses_finding_within_range() {
         "Valid range '50-100' should suppress finding at line 75"
     );
     assert_eq!(report.suppressed.len(), 1);
+}
+
+// ---------------------------------------------------------------------------
+// Security score tests
+// ---------------------------------------------------------------------------
+
+fn make_report_from_findings(findings: Vec<Finding>) -> AuditReport {
+    let result = ScanResult {
+        scanner_name: "test".to_string(),
+        findings,
+        files_scanned: 1,
+        skipped: false,
+        skip_reason: None,
+        error: None,
+        duration_ms: 0,
+    };
+    AuditReport::from_results("score-test", vec![result], &[], false)
+}
+
+fn error_finding(rule_id: &str) -> Finding {
+    Finding {
+        rule_id: rule_id.to_string(),
+        message: "test".to_string(),
+        severity: Severity::Error,
+        file: None,
+        line: None,
+        column: None,
+        scanner: "test".to_string(),
+        snippet: None,
+        suppressed: false,
+        suppression_reason: None,
+        remediation: None,
+    }
+}
+
+fn warning_finding() -> Finding {
+    Finding {
+        rule_id: "bash/CAT-H1".to_string(),
+        message: "test".to_string(),
+        severity: Severity::Warning,
+        file: None,
+        line: None,
+        column: None,
+        scanner: "test".to_string(),
+        snippet: None,
+        suppressed: false,
+        suppression_reason: None,
+        remediation: None,
+    }
+}
+
+fn info_finding() -> Finding {
+    Finding {
+        rule_id: "bash/CAT-H1".to_string(),
+        message: "test".to_string(),
+        severity: Severity::Info,
+        file: None,
+        line: None,
+        column: None,
+        scanner: "test".to_string(),
+        snippet: None,
+        suppressed: false,
+        suppression_reason: None,
+        remediation: None,
+    }
+}
+
+#[test]
+fn clean_skill_scores_100_grade_a() {
+    let report = make_report_from_findings(vec![]);
+    assert_eq!(report.security_score, 100);
+    assert_eq!(report.security_grade, SecurityGrade::A);
+}
+
+#[test]
+fn single_warning_deducts_5_points() {
+    // 100 - 5 = 95 → grade A
+    let report = make_report_from_findings(vec![warning_finding()]);
+    assert_eq!(report.security_score, 95);
+    assert_eq!(report.security_grade, SecurityGrade::A);
+}
+
+#[test]
+fn single_info_deducts_1_point() {
+    // 100 - 1 = 99 → grade A
+    let report = make_report_from_findings(vec![info_finding()]);
+    assert_eq!(report.security_score, 99);
+    assert_eq!(report.security_grade, SecurityGrade::A);
+}
+
+#[test]
+fn regular_error_deducts_15_points() {
+    // 100 - 15 = 85 → grade B
+    let report = make_report_from_findings(vec![error_finding("bash/CAT-G1")]);
+    assert_eq!(report.security_score, 85);
+    assert_eq!(report.security_grade, SecurityGrade::B);
+}
+
+#[test]
+fn critical_rce_error_deducts_30_points() {
+    // bash/CAT-A is an RCE category → 100 - 30 = 70 → grade C
+    let report = make_report_from_findings(vec![error_finding("bash/CAT-A-001")]);
+    assert_eq!(report.security_score, 70);
+    assert_eq!(report.security_grade, SecurityGrade::C);
+}
+
+#[test]
+fn critical_prompt_injection_error_deducts_30_points() {
+    // prompt/ prefix is critical → 100 - 30 = 70 → grade C
+    let report = make_report_from_findings(vec![error_finding("prompt/P01")]);
+    assert_eq!(report.security_score, 70);
+    assert_eq!(report.security_grade, SecurityGrade::C);
+}
+
+#[test]
+fn multiple_findings_accumulate_deductions() {
+    // 1 critical error (-30) + 1 warning (-5) + 1 info (-1) = -36 → score 64 → grade C
+    let findings = vec![
+        error_finding("bash/CAT-D-001"),
+        warning_finding(),
+        info_finding(),
+    ];
+    let report = make_report_from_findings(findings);
+    assert_eq!(report.security_score, 64);
+    assert_eq!(report.security_grade, SecurityGrade::C);
+}
+
+#[test]
+fn score_floors_at_zero() {
+    // 4 critical errors → -120 → clamped to 0 → grade F
+    let findings = vec![
+        error_finding("bash/CAT-A-001"),
+        error_finding("bash/CAT-A-002"),
+        error_finding("bash/CAT-A-003"),
+        error_finding("bash/CAT-A-004"),
+    ];
+    let report = make_report_from_findings(findings);
+    assert_eq!(report.security_score, 0);
+    assert_eq!(report.security_grade, SecurityGrade::F);
+}
+
+#[test]
+fn grade_d_boundary_at_40() {
+    // 4 regular errors → -60 → score 40 → grade D (lower bound of D)
+    let findings = vec![
+        error_finding("bash/CAT-G1"),
+        error_finding("bash/CAT-G1"),
+        error_finding("bash/CAT-G1"),
+        error_finding("bash/CAT-G1"),
+    ];
+    let report = make_report_from_findings(findings);
+    assert_eq!(report.security_score, 40);
+    assert_eq!(report.security_grade, SecurityGrade::D);
 }

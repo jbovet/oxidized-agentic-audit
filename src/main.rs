@@ -213,7 +213,7 @@ fn format_collection_summary(collection_path: &std::path::Path, reports: &[Audit
     use oxidized_skills::finding::AuditStatus;
 
     let mut out = String::new();
-    let separator = "─".repeat(54);
+    let separator = "─".repeat(66);
 
     out.push('\n');
     out.push_str(&format!(
@@ -254,11 +254,21 @@ fn format_collection_summary(collection_path: &std::path::Path, reports: &[Audit
             }
         };
 
+        let score_col = {
+            let s = format!("{:>3}/100 ({})", report.security_score, report.security_grade);
+            match report.security_score {
+                90..=100 => s.green().bold().to_string(),
+                60..=89 => s.yellow().bold().to_string(),
+                _ => s.red().bold().to_string(),
+            }
+        };
+
         let (errors, warnings, info) = report.count_by_severity();
         out.push_str(&format!(
-            "  {icon}  {name:<22} {status}  {e}e {w}w {i}i\n",
+            "  {icon}  {name:<22} {status}  {score}  {e}e {w}w {i}i\n",
             name = report.skill,
             status = status_str,
+            score = score_col,
             e = errors,
             w = warnings,
             i = info,

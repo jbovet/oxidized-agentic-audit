@@ -144,10 +144,22 @@ pub fn format(report: &AuditReport) -> String {
         AuditStatus::Failed => "FAILED".red().bold().to_string(),
     };
 
+    let score_str = {
+        let s = format!(
+            "Score: {}/100 ({})",
+            report.security_score, report.security_grade
+        );
+        match report.security_score {
+            90..=100 => s.green().bold().to_string(),
+            60..=89 => s.yellow().bold().to_string(),
+            _ => s.red().bold().to_string(),
+        }
+    };
+
     // Single pass for all three severity counts.
     let (errors, warnings, info) = report.count_by_severity();
     out.push_str(&format!(
-        "Result: {status_str}  |  {} errors, {} warnings, {} info, {} suppressed\n",
+        "Result: {status_str}  |  {score_str}  |  {} errors, {} warnings, {} info, {} suppressed\n",
         errors,
         warnings,
         info,

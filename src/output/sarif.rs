@@ -5,10 +5,11 @@
 
 use crate::finding::{AuditReport, Finding, Severity};
 use serde_sarif::sarif::{
-    ArtifactLocation, Location, Message, MultiformatMessageString, PhysicalLocation, Region,
-    ReportingDescriptor, Result as SarifResult, ResultLevel, Run, Sarif, Tool, ToolComponent,
+    ArtifactLocation, Location, Message, MultiformatMessageString, PhysicalLocation, PropertyBag,
+    Region, ReportingDescriptor, Result as SarifResult, ResultLevel, Run, Sarif, Tool,
+    ToolComponent,
 };
-use std::collections::HashMap;
+use std::collections::{BTreeMap, HashMap};
 
 /// Formats an [`AuditReport`] as a [SARIF 2.1.0] JSON document.
 ///
@@ -110,7 +111,24 @@ pub fn format(report: &AuditReport) -> String {
 
     let tool = Tool::builder().driver(driver).build();
 
-    let run = Run::builder().tool(tool).results(results).build();
+    let mut run = Run::builder().tool(tool).results(results).build();
+
+    // Embed the security score in the SARIF run.properties bag (SARIF 2.1.0 §3.19).
+    // `additional_properties` is the standard extension point for custom metadata;
+    // GitHub Code Scanning and VS Code SARIF Viewer pass unknown properties through
+    // transparently, so this does not break any consumer.
+    let mut score_props: BTreeMap<String, serde_json::Value> = BTreeMap::new();
+    score_props.insert(
+        "security_score".to_string(),
+        serde_json::json!(report.security_score),
+    );
+    score_props.insert(
+        "security_grade".to_string(),
+        serde_json::json!(report.security_grade.to_string()),
+    );
+    let mut props = PropertyBag::builder().build();
+    props.additional_properties = score_props;
+    run.properties = Some(props);
 
     let sarif = Sarif::builder().version("2.1.0").runs(vec![run]).build();
 
