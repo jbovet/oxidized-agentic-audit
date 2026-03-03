@@ -209,33 +209,33 @@ impl Config {
     /// # Ok::<(), String>(())
     /// ```
     pub fn load(path: Option<&Path>) -> Result<Config, String> {
-        let config_path = if let Some(p) = path {
-            if p.exists() {
-                Some(p.to_path_buf())
-            } else {
-                return Err(format!("Config file not found: {}", p.display()));
-            }
+        let (config_path, is_explicit) = if let Some(p) = path {
+            (p.to_path_buf(), true)
         } else {
-            let default_path = Path::new("oxidized-skills.toml");
-            if default_path.exists() {
-                Some(default_path.to_path_buf())
-            } else {
-                None
-            }
+            (Path::new("oxidized-skills.toml").to_path_buf(), false)
         };
 
-        match config_path {
-            Some(path) => {
-                let content = std::fs::read_to_string(&path)
-                    .map_err(|e| format!("Failed to read config {}: {}", path.display(), e))?;
-                let mut config: Config = toml::from_str(&content)
-                    .map_err(|e| format!("Failed to parse config {}: {}", path.display(), e))?;
+        match std::fs::read_to_string(&config_path) {
+            Ok(content) => {
+                let mut config: Config = toml::from_str(&content).map_err(|e| {
+                    format!("Failed to parse config {}: {}", config_path.display(), e)
+                })?;
                 // Normalize allowlist entries to lowercase once at load time so
                 // scanners can skip per-call lowercasing in hot loops.
                 config.allowlist.normalize();
                 Ok(config)
             }
-            None => Ok(Config::default()),
+            Err(e) if e.kind() == std::io::ErrorKind::NotFound && !is_explicit => {
+                Ok(Config::default())
+            }
+            Err(e) if e.kind() == std::io::ErrorKind::NotFound => {
+                Err(format!("Config file not found: {}", config_path.display()))
+            }
+            Err(e) => Err(format!(
+                "Failed to read config {}: {}",
+                config_path.display(),
+                e
+            )),
         }
     }
 
@@ -336,7 +336,22 @@ pub fn load_suppressions(skill_path: &Path) -> Vec<Suppression> {
     };
 
     match toml::from_str::<SuppressionFile>(&content) {
-        Ok(file) => file.suppress,
+        Ok(file) => file
+            .suppress
+            .into_iter()
+            .filter(|s| {
+                let has_traversal = std::path::Path::new(&s.file)
+                    .components()
+                    .any(|c| matches!(c, std::path::Component::ParentDir));
+                if has_traversal {
+                    eprintln!(
+                        "Warning: ignoring suppression with path traversal in file field: {}",
+                        s.file
+                    );
+                }
+                !has_traversal
+            })
+            .collect(),
         Err(e) => {
             eprintln!("Warning: failed to parse .oxidized-skills-ignore: {e}");
             vec![]

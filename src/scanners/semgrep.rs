@@ -95,87 +95,16 @@ impl Scanner for SemgrepScanner {
             cmd.env("SEMGREP_ENABLE_VERSION_CHECK", "0");
         }
 
-        let mut child = match cmd
-            .arg(path)
-            .stdout(std::process::Stdio::piped())
-            .stderr(std::process::Stdio::piped())
-            .spawn()
-        {
-            Ok(c) => c,
-            Err(e) => {
-                return ScanResult {
-                    scanner_name: self.name().to_string(),
-                    findings: vec![],
-                    files_scanned: 0,
-                    skipped: false,
-                    skip_reason: None,
-                    error: Some(format!("Failed to run semgrep: {}", e)),
-                    duration_ms: start.elapsed().as_millis() as u64,
-                    scanner_score: None,
-                    scanner_grade: None,
-                };
-            }
-        };
+        cmd.arg(path);
 
-        // Poll for completion in small increments rather than blocking
-        // indefinitely.  This avoids hanging when semgrep stalls trying to
-        // reach semgrep.dev on a network-restricted host.
-        let poll_interval = Duration::from_millis(100);
-        loop {
-            match child.try_wait() {
-                Ok(Some(_)) => break, // process exited
-                Ok(None) => {
-                    if start.elapsed() >= SEMGREP_TIMEOUT {
-                        let _ = child.kill();
-                        let _ = child.wait();
-                        return ScanResult {
-                            scanner_name: self.name().to_string(),
-                            findings: vec![],
-                            files_scanned: 0,
-                            skipped: true,
-                            skip_reason: Some(format!(
-                                "semgrep timed out after {}s — likely blocked by network restrictions",
-                                SEMGREP_TIMEOUT.as_secs()
-                            )),
-                            error: None,
-                            duration_ms: start.elapsed().as_millis() as u64,
-                            scanner_score: None,
-                            scanner_grade: None,
-                        };
-                    }
-                    std::thread::sleep(poll_interval);
-                }
-                Err(e) => {
-                    return ScanResult {
-                        scanner_name: self.name().to_string(),
-                        findings: vec![],
-                        files_scanned: 0,
-                        skipped: false,
-                        skip_reason: None,
-                        error: Some(format!("Failed to wait for semgrep: {}", e)),
-                        duration_ms: start.elapsed().as_millis() as u64,
-                        scanner_score: None,
-                        scanner_grade: None,
-                    };
-                }
-            }
-        }
-
-        let output = match child.wait_with_output() {
+        let output = match crate::scanners::run_with_timeout(
+            cmd,
+            SEMGREP_TIMEOUT,
+            self.name(),
+            start,
+        ) {
             Ok(o) => o,
-            Err(e) => {
-                return ScanResult {
-                    scanner_name: self.name().to_string(),
-                    findings: vec![],
-                    files_scanned: 0,
-                    skipped: false,
-                    skip_reason: None,
-                    error: Some(format!("Failed to read semgrep output: {}", e)),
-                    duration_ms: start.elapsed().as_millis() as u64,
-                    scanner_score: None,
-                    scanner_grade: None,
-                };
-            }
+            Err(scan_result) => return scan_result,
         };
 
         // semgrep exits non-zero when findings are present or on error
@@ -197,17 +126,11 @@ impl Scanner for SemgrepScanner {
         let root: serde_json::Value = match serde_json::from_str(&stdout) {
             Ok(v) => v,
             Err(e) => {
-                return ScanResult {
-                    scanner_name: self.name().to_string(),
-                    findings: vec![],
-                    files_scanned: 0,
-                    skipped: false,
-                    skip_reason: None,
-                    error: Some(format!("Failed to parse semgrep JSON: {}", e)),
-                    duration_ms: start.elapsed().as_millis() as u64,
-                    scanner_score: None,
-                    scanner_grade: None,
-                };
+                return ScanResult::error(
+                    self.name(),
+                    format!("Failed to parse semgrep JSON: {}", e),
+                    start.elapsed().as_millis() as u64,
+                );
             }
         };
 

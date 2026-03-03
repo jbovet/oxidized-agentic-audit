@@ -60,48 +60,34 @@ impl Scanner for SecretsScanner {
         let report_file = match tempfile::NamedTempFile::new() {
             Ok(f) => f,
             Err(e) => {
-                return ScanResult {
-                    scanner_name: self.name().to_string(),
-                    findings: vec![],
-                    files_scanned: 0,
-                    skipped: false,
-                    skip_reason: None,
-                    error: Some(format!("Failed to create temp file: {}", e)),
-                    duration_ms: start.elapsed().as_millis() as u64,
-                    scanner_score: None,
-                    scanner_grade: None,
-                };
+                return ScanResult::error(
+                    self.name(),
+                    format!("Failed to create temp file: {}", e),
+                    start.elapsed().as_millis() as u64,
+                );
             }
         };
 
         let report_path = report_file.path().to_path_buf();
 
-        let output = std::process::Command::new("gitleaks")
-            .arg("detect")
+        let mut cmd = std::process::Command::new("gitleaks");
+        cmd.arg("detect")
             .arg("--source")
             .arg(path)
             .arg("--no-git")
             .arg("--report-format")
             .arg("json")
             .arg("--report-path")
-            .arg(&report_path)
-            .output();
+            .arg(&report_path);
 
-        let output = match output {
+        let output = match crate::scanners::run_with_timeout(
+            cmd,
+            crate::scanners::EXTERNAL_TOOL_TIMEOUT,
+            self.name(),
+            start,
+        ) {
             Ok(o) => o,
-            Err(e) => {
-                return ScanResult {
-                    scanner_name: self.name().to_string(),
-                    findings: vec![],
-                    files_scanned: 0,
-                    skipped: false,
-                    skip_reason: None,
-                    error: Some(format!("Failed to run gitleaks: {}", e)),
-                    duration_ms: start.elapsed().as_millis() as u64,
-                    scanner_score: None,
-                    scanner_grade: None,
-                };
-            }
+            Err(scan_result) => return scan_result,
         };
 
         // gitleaks exits 1 when leaks are found, 0 when clean.
@@ -109,17 +95,11 @@ impl Scanner for SecretsScanner {
         if let Some(code) = output.status.code() {
             if code > 1 {
                 let stderr = String::from_utf8_lossy(&output.stderr);
-                return ScanResult {
-                    scanner_name: self.name().to_string(),
-                    findings: vec![],
-                    files_scanned: 0,
-                    skipped: false,
-                    skip_reason: None,
-                    error: Some(format!("gitleaks error (exit {}): {}", code, stderr.trim())),
-                    duration_ms: start.elapsed().as_millis() as u64,
-                    scanner_score: None,
-                    scanner_grade: None,
-                };
+                return ScanResult::error(
+                    self.name(),
+                    format!("gitleaks error (exit {}): {}", code, stderr.trim()),
+                    start.elapsed().as_millis() as u64,
+                );
             }
         }
 
@@ -127,34 +107,22 @@ impl Scanner for SecretsScanner {
         let content = match std::fs::read_to_string(&report_path) {
             Ok(c) => c,
             Err(e) => {
-                return ScanResult {
-                    scanner_name: self.name().to_string(),
-                    findings: vec![],
-                    files_scanned: 0,
-                    skipped: false,
-                    skip_reason: None,
-                    error: Some(format!("Failed to read gitleaks report: {e}")),
-                    duration_ms: start.elapsed().as_millis() as u64,
-                    scanner_score: None,
-                    scanner_grade: None,
-                };
+                return ScanResult::error(
+                    self.name(),
+                    format!("Failed to read gitleaks report: {e}"),
+                    start.elapsed().as_millis() as u64,
+                );
             }
         };
 
         let items: Vec<serde_json::Value> = match serde_json::from_str(&content) {
             Ok(v) => v,
             Err(e) => {
-                return ScanResult {
-                    scanner_name: self.name().to_string(),
-                    findings: vec![],
-                    files_scanned: 1,
-                    skipped: false,
-                    skip_reason: None,
-                    error: Some(format!("Failed to parse gitleaks report: {}", e)),
-                    duration_ms: start.elapsed().as_millis() as u64,
-                    scanner_score: None,
-                    scanner_grade: None,
-                };
+                return ScanResult::error(
+                    self.name(),
+                    format!("Failed to parse gitleaks report: {}", e),
+                    start.elapsed().as_millis() as u64,
+                );
             }
         };
 
@@ -186,7 +154,15 @@ impl Scanner for SecretsScanner {
             let snippet = item["Match"]
                 .as_str()
                 .or_else(|| item["match"].as_str())
-                .map(|s| s.to_string());
+                .map(|s| {
+                    // Redact the actual secret value to prevent leaking into
+                    // CI logs, JSON/SARIF reports, or terminal output.
+                    if s.len() > 8 {
+                        format!("{}...{}", &s[..4], "*".repeat(s.len().min(20) - 4))
+                    } else {
+                        "*".repeat(s.len())
+                    }
+                });
 
             findings.push(Finding {
                 rule_id,

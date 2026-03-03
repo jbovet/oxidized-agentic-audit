@@ -22,7 +22,12 @@ pub mod shellcheck;
 use crate::config::Config;
 use crate::finding::ScanResult;
 use std::path::{Path, PathBuf};
+use std::process::{Command, Output};
+use std::time::{Duration, Instant};
 use walkdir::WalkDir;
+
+/// Default timeout for external tool invocations (60 seconds).
+pub const EXTERNAL_TOOL_TIMEOUT: Duration = Duration::from_secs(60);
 
 /// A pluggable security scanner.
 ///
@@ -141,6 +146,80 @@ pub fn which_exists(cmd: &str) -> bool {
             })
         })
         .unwrap_or(false)
+}
+
+/// Runs an external tool with a timeout, killing the process if it exceeds the limit.
+///
+/// Returns `Ok(Output)` on success, or `Err(ScanResult)` if the tool timed out,
+/// failed to spawn, or encountered an I/O error. The error variant contains a
+/// pre-built [`ScanResult`] with appropriate `skipped` or `error` fields set.
+///
+/// Used by the external scanners ([`shellcheck`], [`secrets`], [`semgrep`]) to
+/// prevent indefinite hangs when a tool stalls.
+pub fn run_with_timeout(
+    mut cmd: Command,
+    timeout: Duration,
+    scanner_name: &str,
+    start: Instant,
+) -> Result<Output, ScanResult> {
+    let mut child = match cmd
+        .stdout(std::process::Stdio::piped())
+        .stderr(std::process::Stdio::piped())
+        .spawn()
+    {
+        Ok(c) => c,
+        Err(e) => {
+            return Err(ScanResult::error(
+                scanner_name,
+                format!("Failed to run {}: {}", scanner_name, e),
+                start.elapsed().as_millis() as u64,
+            ));
+        }
+    };
+
+    let poll_interval = Duration::from_millis(100);
+    loop {
+        match child.try_wait() {
+            Ok(Some(_)) => break,
+            Ok(None) => {
+                if start.elapsed() >= timeout {
+                    let _ = child.kill();
+                    let _ = child.wait();
+                    return Err(ScanResult {
+                        scanner_name: scanner_name.to_string(),
+                        findings: vec![],
+                        files_scanned: 0,
+                        skipped: true,
+                        skip_reason: Some(format!(
+                            "{} timed out after {}s",
+                            scanner_name,
+                            timeout.as_secs()
+                        )),
+                        error: None,
+                        duration_ms: start.elapsed().as_millis() as u64,
+                        scanner_score: None,
+                        scanner_grade: None,
+                    });
+                }
+                std::thread::sleep(poll_interval);
+            }
+            Err(e) => {
+                return Err(ScanResult::error(
+                    scanner_name,
+                    format!("Failed to wait for {}: {}", scanner_name, e),
+                    start.elapsed().as_millis() as u64,
+                ));
+            }
+        }
+    }
+
+    child.wait_with_output().map_err(|e| {
+        ScanResult::error(
+            scanner_name,
+            format!("Failed to read {} output: {}", scanner_name, e),
+            start.elapsed().as_millis() as u64,
+        )
+    })
 }
 
 /// Returns `true` if `line` ends with an inline suppression marker.

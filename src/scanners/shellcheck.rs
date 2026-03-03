@@ -70,19 +70,24 @@ impl Scanner for ShellCheckScanner {
         let mut findings = Vec::new();
         let mut error_msg: Option<String> = None;
 
-        for file in &files {
-            let output = match std::process::Command::new("shellcheck")
-                .arg("-f")
-                .arg("json")
-                .arg("--severity=style")
-                .arg(file)
-                .output()
-            {
+        // Batch files to avoid spawning one process per file.
+        // ShellCheck supports multiple file arguments in a single invocation.
+        const BATCH_SIZE: usize = 50;
+        for chunk in files.chunks(BATCH_SIZE) {
+            let mut cmd = std::process::Command::new("shellcheck");
+            cmd.arg("-f").arg("json").arg("--severity=style");
+            for file in chunk {
+                cmd.arg(file);
+            }
+
+            let output = match crate::scanners::run_with_timeout(
+                cmd,
+                crate::scanners::EXTERNAL_TOOL_TIMEOUT,
+                self.name(),
+                start,
+            ) {
                 Ok(o) => o,
-                Err(e) => {
-                    error_msg = Some(format!("Failed to run shellcheck: {}", e));
-                    continue;
-                }
+                Err(scan_result) => return scan_result,
             };
 
             // shellcheck exits non-zero when it finds issues; that is expected.
@@ -120,11 +125,17 @@ impl Scanner for ShellCheckScanner {
                 let line = item["line"].as_u64().map(|l| l as usize);
                 let column = item["column"].as_u64().map(|c| c as usize);
 
+                // Read file path from shellcheck JSON output (needed since we
+                // batch multiple files per invocation).
+                let file_path = item["file"]
+                    .as_str()
+                    .map(std::path::PathBuf::from);
+
                 findings.push(Finding {
                     rule_id,
                     message,
                     severity,
-                    file: Some(file.clone()),
+                    file: file_path,
                     line,
                     column,
                     scanner: self.name().to_string(),

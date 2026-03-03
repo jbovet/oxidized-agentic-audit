@@ -133,6 +133,34 @@ impl ScanResult {
             scanner_grade: None,
         }
     }
+
+    /// Creates a [`ScanResult`] representing a scanner that encountered an error.
+    ///
+    /// Use this when a scanner fails to run — for example because the external
+    /// tool exited with an unexpected error code.
+    ///
+    /// # Examples
+    ///
+    /// ```
+    /// use oxidized_skills::finding::ScanResult;
+    ///
+    /// let result = ScanResult::error("shellcheck", "Failed to run shellcheck".to_string(), 42);
+    /// assert!(result.error.is_some());
+    /// assert!(!result.skipped);
+    /// ```
+    pub fn error(name: &str, error: String, duration_ms: u64) -> Self {
+        ScanResult {
+            scanner_name: name.to_string(),
+            findings: vec![],
+            files_scanned: 0,
+            skipped: false,
+            skip_reason: None,
+            error: Some(error),
+            duration_ms,
+            scanner_score: None,
+            scanner_grade: None,
+        }
+    }
 }
 
 /// Complete audit report for a single skill.
@@ -245,9 +273,8 @@ impl AuditReport {
             }
         }
 
-        let status = compute_status(&active, strict);
-        let risk_level = compute_risk_level(&active);
-        let (security_score, security_grade) = compute_security_score(&active);
+        let (status, risk_level, security_score, security_grade) =
+            compute_audit_metrics(&active, strict);
         let passed = matches!(status, AuditStatus::Passed);
 
         AuditReport {
@@ -371,18 +398,45 @@ impl fmt::Display for SecurityGrade {
     }
 }
 
-fn compute_status(findings: &[Finding], strict: bool) -> AuditStatus {
-    // Single pass: track both flags simultaneously.
-    let (has_errors, has_warnings) =
-        findings
-            .iter()
-            .fold((false, false), |(e, w), f| match f.severity {
-                Severity::Error => (true, w),
-                Severity::Warning => (e, true),
-                Severity::Info => (e, w),
-            });
+/// Computes status, risk level, security score, and grade in a single pass.
+///
+/// Used by [`AuditReport::from_results`] to derive all aggregate metrics
+/// without iterating the findings list three times.
+fn compute_audit_metrics(
+    findings: &[Finding],
+    strict: bool,
+) -> (AuditStatus, RiskLevel, u8, SecurityGrade) {
+    let mut has_errors = false;
+    let mut has_warnings = false;
+    let mut has_rce_or_backdoor = false;
+    let mut deduction: u32 = 0;
 
-    if has_errors {
+    for f in findings {
+        let is_critical = f.rule_id.starts_with("bash/CAT-A")
+            || f.rule_id.starts_with("bash/CAT-D")
+            || f.rule_id.starts_with("prompt/");
+
+        match f.severity {
+            Severity::Error => {
+                has_errors = true;
+                if is_critical {
+                    has_rce_or_backdoor = true;
+                    deduction += 30;
+                } else {
+                    deduction += 15;
+                }
+            }
+            Severity::Warning => {
+                has_warnings = true;
+                deduction += 5;
+            }
+            Severity::Info => {
+                deduction += 1;
+            }
+        }
+    }
+
+    let status = if has_errors {
         AuditStatus::Failed
     } else if has_warnings {
         if strict {
@@ -392,27 +446,9 @@ fn compute_status(findings: &[Finding], strict: bool) -> AuditStatus {
         }
     } else {
         AuditStatus::Passed
-    }
-}
+    };
 
-fn compute_risk_level(findings: &[Finding]) -> RiskLevel {
-    // Single pass: collect all three flags at once.
-    let (has_rce_or_backdoor, has_errors, has_warnings) =
-        findings
-            .iter()
-            .fold((false, false, false), |(rce, err, warn), f| {
-                let is_rce = f.severity == Severity::Error
-                    && (f.rule_id.starts_with("bash/CAT-A")
-                        || f.rule_id.starts_with("bash/CAT-D")
-                        || f.rule_id.starts_with("prompt/"));
-                (
-                    rce || is_rce,
-                    err || f.severity == Severity::Error,
-                    warn || f.severity == Severity::Warning,
-                )
-            });
-
-    if has_rce_or_backdoor {
+    let risk_level = if has_rce_or_backdoor {
         RiskLevel::Critical
     } else if has_errors {
         RiskLevel::High
@@ -420,12 +456,25 @@ fn compute_risk_level(findings: &[Finding]) -> RiskLevel {
         RiskLevel::Medium
     } else {
         RiskLevel::Low
-    }
+    };
+
+    let score = (100u32.saturating_sub(deduction)).min(100) as u8;
+    let grade = match score {
+        90..=100 => SecurityGrade::A,
+        75..=89 => SecurityGrade::B,
+        60..=74 => SecurityGrade::C,
+        40..=59 => SecurityGrade::D,
+        _ => SecurityGrade::F,
+    };
+
+    (status, risk_level, score, grade)
 }
 
+/// Computes the security score and grade for a set of findings.
+///
+/// Kept as a standalone function for per-scanner scoring in
+/// [`AuditReport::from_results`].
 fn compute_security_score(findings: &[Finding]) -> (u8, SecurityGrade) {
-    // Deduct points per finding: critical errors cost the most.
-    // The rule ID prefixes mirror `compute_risk_level` for consistency.
     let deduction: u32 = findings.iter().fold(0u32, |acc, f| {
         let pts: u32 = match f.severity {
             Severity::Error => {
