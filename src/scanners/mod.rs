@@ -105,18 +105,30 @@ pub fn all_scanners() -> Vec<Box<dyn Scanner>> {
 pub fn collect_files(path: &Path, extensions: &[&str]) -> Vec<PathBuf> {
     let mut files = Vec::new();
     for entry in WalkDir::new(path)
+        // Explicitly disable symlink following to prevent directory-escape attacks
+        // via symlinks that point outside the skill root.  With follow_links(false),
+        // DirEntry::file_type().is_file() returns false for symlinks, so the filter
+        // below naturally excludes them.
+        .follow_links(false)
         .into_iter()
         .filter_map(|e| e.ok())
         .filter(|e| e.file_type().is_file())
     {
-        let path = entry.path();
-        if let Some(ext) = path.extension() {
+        let entry_path = entry.path();
+        // Containment check: defence-in-depth to ensure every collected path
+        // remains inside the scan root even if WalkDir behaviour changes.
+        if !entry_path.starts_with(path) {
+            continue;
+        }
+        if let Some(ext) = entry_path.extension() {
             let ext_str = ext.to_string_lossy().to_lowercase();
             if extensions.contains(&ext_str.as_str()) {
-                files.push(path.to_path_buf());
+                files.push(entry_path.to_path_buf());
             }
         }
     }
+    // Sort for deterministic finding order across runs and platforms.
+    files.sort();
     files
 }
 

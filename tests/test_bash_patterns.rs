@@ -493,6 +493,28 @@ fn cat_g2_detects_mixed_case_variable() {
 }
 
 // ---------------------------------------------------------------------------
+// Regression guard: PATTERNS and PATTERN_SET must remain in sync
+// ---------------------------------------------------------------------------
+
+#[test]
+fn bash_pattern_rule_count_matches_expected() {
+    // rules() derives its entries from the PATTERNS static array.
+    // If a pattern is added to PATTERN_SET but not to PATTERNS (or vice-versa),
+    // runtime indexing will panic.  This test pins the expected count so that
+    // any accidental drift is caught immediately at compile/test time.
+    //
+    // Expected breakdown: A1-A4 (4) + B1-B5 (5) + C1-C2 (2) + D1-D3 (3)
+    //                   + E1-E2 (2) + G1-G2 (2) + H1 (1) = 19
+    let rules = oxidized_skills::scanners::bash_patterns::rules();
+    assert_eq!(
+        rules.len(),
+        19,
+        "Bash scanner has {} rules but expected 19 — update this count after adding/removing a pattern",
+        rules.len()
+    );
+}
+
+// ---------------------------------------------------------------------------
 // Fix #1: Snippet truncation does not panic on multi-byte UTF-8 characters
 // ---------------------------------------------------------------------------
 

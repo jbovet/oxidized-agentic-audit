@@ -344,16 +344,21 @@ pub fn load_suppressions(skill_path: &Path) -> Vec<Suppression> {
             .suppress
             .into_iter()
             .filter(|s| {
-                let has_traversal = std::path::Path::new(&s.file)
+                let suppression_path = std::path::Path::new(&s.file);
+                // Reject `..` components (relative traversal) AND absolute paths.
+                // An absolute path like `/etc/passwd` would pass the ParentDir check
+                // but references a file outside the skill directory.
+                let has_parent_dir = suppression_path
                     .components()
                     .any(|c| matches!(c, std::path::Component::ParentDir));
-                if has_traversal {
+                let is_absolute = suppression_path.is_absolute();
+                if has_parent_dir || is_absolute {
                     eprintln!(
-                        "Warning: ignoring suppression with path traversal in file field: {}",
+                        "Warning: ignoring suppression with unsafe path in file field: {}",
                         s.file
                     );
                 }
-                !has_traversal
+                !has_parent_dir && !is_absolute
             })
             .collect(),
         Err(e) => {

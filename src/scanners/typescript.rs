@@ -261,6 +261,16 @@ impl Scanner for TypeScriptScanner {
         let files = collect_files(path, &["ts", "tsx", "mts", "js", "mjs"]);
         let mut findings = Vec::new();
 
+        // Guard: PATTERNS and PATTERN_SET must stay in sync.
+        // Out-of-sync arrays cause an index-out-of-bounds panic when a line
+        // matches an index that exceeds PATTERNS.len().  This assert fires in
+        // debug/test builds, catching the mismatch at development time.
+        debug_assert_eq!(
+            PATTERNS.len(),
+            PATTERN_SET.len(),
+            "typescript PATTERNS and PATTERN_SET are out of sync — add/remove from both arrays"
+        );
+
         // Pre-build allowlist HashSet once for O(1) domain lookups per line.
         let allowed_domains: std::collections::HashSet<&str> = config
             .allowlist
@@ -341,7 +351,7 @@ impl Scanner for TypeScriptScanner {
                     findings.push(Finding {
                         rule_id: pattern.id.to_string(),
                         message: pattern.message.to_string(),
-                        severity: pattern.severity.clone(),
+                        severity: pattern.severity,
                         file: Some(file.clone()),
                         line: Some(line_num),
                         column: None,

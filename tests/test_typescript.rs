@@ -601,3 +601,19 @@ fn scanner_config_toggle_disables_scanner() {
         "typescript_patterns toggle must disable the scanner"
     );
 }
+
+#[test]
+fn typescript_pattern_rule_count_matches_expected() {
+    // Pins the exact number of TypeScript scanner rules as a regression guard.
+    // If PATTERNS and PATTERN_SET drift out of sync the debug_assert_eq! in
+    // scan() catches it, but this test also provides a visible count check.
+    //
+    // Expected: A1-A2 (2) + B1-B3 (3) + C1-C3 (3) + D1 (1) + H1 (1) = 10
+    let rules = oxidized_skills::scanners::typescript::rules();
+    assert_eq!(
+        rules.len(),
+        10,
+        "TypeScript scanner has {} rules but expected 10 — update this count after adding/removing a pattern",
+        rules.len()
+    );
+}

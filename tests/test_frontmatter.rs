@@ -248,6 +248,52 @@ fn name_exactly_64_chars_no_finding() {
 }
 
 // ---------------------------------------------------------------------------
+// Bug 3 regression: char count vs byte count for name length
+// ---------------------------------------------------------------------------
+
+#[test]
+fn name_64_multibyte_chars_at_limit_no_finding() {
+    // "é" is 2 bytes in UTF-8 but 1 character.
+    // A 64-character name made of "é" has 128 bytes — the old .len() check
+    // would have incorrectly fired name-too-long (128 > 64).
+    // With .chars().count() it is exactly at the 64-char limit.
+    let name = "é".repeat(64);
+    let dir = tempfile::tempdir().unwrap();
+    write_skill_md(
+        dir.path(),
+        &format!("---\nname: {name}\ndescription: A skill. Use when needed.\nallowed-tools:\n  - Bash(find)\n---\n"),
+    );
+    let result = scan_dir(dir.path());
+    let found = result
+        .findings
+        .iter()
+        .any(|f| f.rule_id == "frontmatter/name-too-long");
+    assert!(
+        !found,
+        "64 multi-byte characters must not fire name-too-long (byte count != char count)"
+    );
+}
+
+#[test]
+fn name_65_multibyte_chars_over_limit_fires_warning() {
+    let name = "é".repeat(65);
+    let dir = tempfile::tempdir().unwrap();
+    write_skill_md(
+        dir.path(),
+        &format!("---\nname: {name}\ndescription: A skill. Use when needed.\nallowed-tools:\n  - Bash(find)\n---\n"),
+    );
+    let result = scan_dir(dir.path());
+    let found = result
+        .findings
+        .iter()
+        .any(|f| f.rule_id == "frontmatter/name-too-long");
+    assert!(
+        found,
+        "65 multi-byte characters (one over limit) must fire name-too-long"
+    );
+}
+
+// ---------------------------------------------------------------------------
 // Rule: frontmatter/description-missing
 // ---------------------------------------------------------------------------
 
@@ -327,6 +373,47 @@ fn description_exactly_1024_chars_no_finding() {
     assert!(
         !found,
         "1024-char description is at limit — should not fire"
+    );
+}
+
+#[test]
+fn description_1024_multibyte_chars_at_limit_no_finding() {
+    // "é" is 2 bytes but 1 char — 1024 × "é" = 2048 bytes, 1024 chars.
+    // Old .len() check would fire (2048 > 1024); .chars().count() correctly does not.
+    let desc = "é".repeat(1024);
+    let dir = tempfile::tempdir().unwrap();
+    write_skill_md(
+        dir.path(),
+        &format!("---\nname: my-skill\ndescription: {desc}\nallowed-tools:\n  - Bash(find)\n---\n"),
+    );
+    let result = scan_dir(dir.path());
+    let found = result
+        .findings
+        .iter()
+        .any(|f| f.rule_id == "frontmatter/description-too-long");
+    assert!(
+        !found,
+        "1024-multibyte-char description is at limit — should not fire"
+    );
+}
+
+#[test]
+fn description_1025_multibyte_chars_over_limit_fires_warning() {
+    // "é" is 2 bytes but 1 char — 1025 chars is one over the limit.
+    let desc = "é".repeat(1025);
+    let dir = tempfile::tempdir().unwrap();
+    write_skill_md(
+        dir.path(),
+        &format!("---\nname: my-skill\ndescription: {desc}\nallowed-tools:\n  - Bash(find)\n---\n"),
+    );
+    let result = scan_dir(dir.path());
+    let found = result
+        .findings
+        .iter()
+        .any(|f| f.rule_id == "frontmatter/description-too-long");
+    assert!(
+        found,
+        "Expected description-too-long for 1025-multibyte-char description"
     );
 }
 
@@ -1026,5 +1113,104 @@ fn name_mismatch_fixture_fires() {
     assert!(
         found,
         "name-mismatch-skill fixture should trigger frontmatter/name-directory-mismatch"
+    );
+}
+
+// Bug regression: name-directory-mismatch must not fire when invalid-name-format already did
+#[test]
+fn invalid_name_format_suppresses_directory_mismatch_finding() {
+    // 'My_Skill' is malformed (uppercase + underscore) → invalid-name-format fires.
+    // It also differs from the directory 'my-skill', but name-directory-mismatch
+    // should be suppressed to avoid noisy double-reporting.
+    let base = tempfile::tempdir().unwrap();
+    let skill_dir = base.path().join("my-skill");
+    std::fs::create_dir_all(&skill_dir).unwrap();
+    write_skill_md(
+        &skill_dir,
+        "---\nname: My_Skill\ndescription: A skill. Use when needed.\nallowed-tools:\n  - Bash(find)\n---\n",
+    );
+    let result = scan_dir(&skill_dir);
+    let has_format = result
+        .findings
+        .iter()
+        .any(|f| f.rule_id == "frontmatter/invalid-name-format");
+    let has_mismatch = result
+        .findings
+        .iter()
+        .any(|f| f.rule_id == "frontmatter/name-directory-mismatch");
+    assert!(
+        has_format,
+        "invalid-name-format must still fire for 'My_Skill'"
+    );
+    assert!(
+        !has_mismatch,
+        "name-directory-mismatch must be suppressed when invalid-name-format already fired"
+    );
+}
+
+// ---------------------------------------------------------------------------
+// Bug regression: comment with colon inside block sequence must not drop items
+// ---------------------------------------------------------------------------
+
+#[test]
+fn comment_with_colon_inside_allowed_tools_sequence_does_not_drop_items() {
+    // A YAML comment like `# See https://docs.example.com` contains a colon.
+    // Before the fix, parse_kv would parse the comment as key="# See https"
+    // and overwrite current_key, causing the next list item to be dropped.
+    // After the fix, comment lines are skipped entirely before parse_kv is called.
+    let dir = tempfile::tempdir().unwrap();
+    std::fs::create_dir_all(dir.path().join("my-skill")).unwrap();
+    // Write a SKILL.md with an unscoped Bash followed by a comment containing a colon
+    // and then a Write entry.  Before the fix, parse_kv would parse the comment as
+    // key="# See https" and overwrite current_key, causing Write to be silently dropped.
+    write_skill_md(
+        &dir.path().join("my-skill"),
+        "---\nname: my-skill\ndescription: A skill. Use when needed.\nallowed-tools:\n  - Bash\n# See https://docs.example.com for more info\n  - Write\n---\n",
+    );
+    let skill_dir = dir.path().join("my-skill");
+    let result = scan_dir(&skill_dir);
+    // bare-bash-tool MUST fire because Bash (unscoped) is present — if the comment
+    // had corrupted current_key and dropped Write, the parser would still see Bash.
+    // More importantly, the allowed_tools list must contain 2 entries: Bash + Write.
+    let bare_bash: Vec<_> = result
+        .findings
+        .iter()
+        .filter(|f| f.rule_id == "frontmatter/bare-bash-tool")
+        .collect();
+    assert!(
+        bare_bash.len() == 1,
+        "bare-bash-tool must fire exactly once for unscoped Bash; comment must not corrupt parsing"
+    );
+    // The key assertion: scan must not emit a missing-skill-md error.
+    let missing: Vec<_> = result
+        .findings
+        .iter()
+        .filter(|f| f.rule_id == "frontmatter/missing-skill-md")
+        .collect();
+    assert!(
+        missing.is_empty(),
+        "Comment with colon must not corrupt frontmatter parsing"
+    );
+}
+
+#[test]
+fn comment_without_colon_inside_block_sequence_does_not_drop_items() {
+    // Plain comments (no colon) were always handled, but verify they still work.
+    let base = tempfile::tempdir().unwrap();
+    let skill_dir = base.path().join("my-skill");
+    std::fs::create_dir_all(&skill_dir).unwrap();
+    write_skill_md(
+        &skill_dir,
+        "---\nname: my-skill\ndescription: A skill. Use when needed.\nallowed-tools:\n  - Bash(find)\n# plain comment no colon\n  - Write\n---\n",
+    );
+    let result = scan_dir(&skill_dir);
+    let bare_bash: Vec<_> = result
+        .findings
+        .iter()
+        .filter(|f| f.rule_id == "frontmatter/bare-bash-tool")
+        .collect();
+    assert!(
+        bare_bash.is_empty(),
+        "Scoped Bash(find) with a plain comment must not fire bare-bash-tool"
     );
 }

@@ -77,7 +77,29 @@ impl Scanner for SemgrepScanner {
         //    - Fall back to local semgrep.yml or .semgrep.yml if they exist.
         //    - Otherwise semgrep will use its default (usually 'auto' registry rules).
         if let Some(ref custom_config) = config.semgrep.config {
-            cmd.arg("--config").arg(custom_config);
+            // Validate the config value before passing to semgrep.
+            // Accepted forms:
+            //   - Registry shorthands:  p/<ruleset>, r/<rules>, auto
+            //   - URLs:                 https://... or http://...
+            //   - Local path:           must be an existing file or directory
+            //
+            // This prevents argument-confusion where a crafted config value like
+            // "--flag" could alter semgrep's behaviour in unexpected ways.
+            let is_registry = custom_config.starts_with("p/")
+                || custom_config.starts_with("r/")
+                || custom_config == "auto";
+            let is_url = custom_config.contains("://");
+            let is_local_path = Path::new(custom_config.as_str()).exists();
+
+            if is_registry || is_url || is_local_path {
+                cmd.arg("--config").arg(custom_config);
+            } else {
+                eprintln!(
+                    "Warning: semgrep config '{}' is not a registry shorthand, URL, or existing \
+                     path — skipping custom config",
+                    custom_config
+                );
+            }
         } else if Path::new("semgrep.yml").exists() {
             cmd.arg("--config").arg("semgrep.yml");
         } else if Path::new(".semgrep.yml").exists() {

@@ -281,6 +281,16 @@ impl Scanner for BashPatternScanner {
         let files = collect_files(path, &["sh", "bash", "zsh"]);
         let mut findings = Vec::new();
 
+        // Guard: PATTERNS and PATTERN_SET must stay in sync.
+        // If they drift (e.g. a pattern added to one but not the other) the
+        // indexing below will panic at runtime.  This assert fires immediately
+        // in debug/test builds so the mismatch is caught at development time.
+        debug_assert_eq!(
+            PATTERNS.len(),
+            PATTERN_SET.len(),
+            "bash PATTERNS and PATTERN_SET are out of sync — add/remove from both arrays"
+        );
+
         // Build HashSet once for O(1) exact-match lookups in domain_is_allowed.
         let allowed_domains: std::collections::HashSet<&str> = config
             .allowlist
@@ -361,7 +371,7 @@ impl Scanner for BashPatternScanner {
                     findings.push(Finding {
                         rule_id: pattern.id.to_string(),
                         message: pattern.message.to_string(),
-                        severity: pattern.severity.clone(),
+                        severity: pattern.severity,
                         file: Some(file.clone()),
                         line: Some(line_num),
                         column: None,

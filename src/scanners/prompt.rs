@@ -328,7 +328,7 @@ impl Scanner for PromptScanner {
                     findings.push(Finding {
                         rule_id: pattern.id.to_string(),
                         message: pattern.message.to_string(),
-                        severity: pattern.severity.clone(),
+                        severity: pattern.severity,
                         file: Some(file.clone()),
                         line: Some(line_num),
                         column: None,

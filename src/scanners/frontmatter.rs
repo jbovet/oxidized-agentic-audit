@@ -163,6 +163,14 @@ fn parse_frontmatter(content: &str) -> Option<FrontmatterData> {
             break;
         }
 
+        // Skip YAML comment lines before key/sequence processing.
+        // Without this guard a comment containing a colon (e.g. `# See https://…`)
+        // is passed to `parse_kv`, which returns a spurious key and overwrites
+        // `current_key` — silently dropping any subsequent block-sequence items.
+        if line.trim_start().starts_with('#') {
+            continue;
+        }
+
         // Block-sequence item: `  - value` (indented) or `- value` (unindented).
         let is_list_item = line.starts_with("  - ")
             || line.starts_with("\t- ")
@@ -295,8 +303,10 @@ fn validate_name(findings: &mut Vec<Finding>, name_val: &str, name_line: usize, 
         );
     }
 
-    // Rule 4: Reserved brand words.
+    // Compute once; used by Rule 4 (reserved words) and Rule 10 (vague terms).
     let name_lower = name_val.to_lowercase();
+
+    // Rule 4: Reserved brand words.
     if name_lower.contains("claude") || name_lower.contains("anthropic") {
         emit_fm(
             findings,
@@ -326,12 +336,15 @@ fn validate_name(findings: &mut Vec<Finding>, name_val: &str, name_line: usize, 
     }
 
     // Rule 6: Name length.
-    if name_val.len() > 64 {
+    // Use chars().count() rather than len() so multi-byte UTF-8 characters
+    // are counted as single characters, not as multiple bytes.
+    let name_char_count = name_val.chars().count();
+    if name_char_count > 64 {
         emit_fm(
             findings,
             "frontmatter/name-too-long",
             Severity::Warning,
-            &format!("Skill name is {} chars — maximum is 64", name_val.len()),
+            &format!("Skill name is {} chars — maximum is 64", name_char_count),
             "Shorten the skill name to 64 characters or fewer",
             skill_md,
             Some(name_line),
@@ -341,7 +354,6 @@ fn validate_name(findings: &mut Vec<Finding>, name_val: &str, name_line: usize, 
     // Rule 10: Vague generic name segment.
     // Split the kebab-case name into tokens and check each against the list of
     // terms that provide no meaningful signal about what a skill does.
-    let name_lower = name_val.to_lowercase();
     let has_vague = name_lower
         .split('-')
         .any(|seg| VAGUE_NAME_TERMS.contains(&seg));
@@ -403,12 +415,16 @@ fn validate_description(
     }
 
     // Rule 8: Description too long.
-    if desc_val.len() > 1024 {
+    // Use chars().count() so multi-byte UTF-8 characters are counted as single
+    // characters, matching the documented "1024 character" limit rather than
+    // a 1024-byte limit that would false-positive on non-ASCII descriptions.
+    let desc_char_count = desc_val.chars().count();
+    if desc_char_count > 1024 {
         emit_fm(
             findings,
             "frontmatter/description-too-long",
             Severity::Warning,
-            &format!("Description is {} chars — maximum is 1024", desc_val.len()),
+            &format!("Description is {} chars — maximum is 1024", desc_char_count),
             "Shorten the description to 1024 characters or fewer",
             skill_md,
             Some(desc_line),
@@ -572,20 +588,27 @@ impl Scanner for FrontmatterScanner {
                 // Rule 16: name must match the containing directory name.
                 // The Claude skill spec requires the `name` field to match the
                 // directory so registries and runtimes can locate the skill by name.
-                if let Some(dir_name) = path.file_name().and_then(|n| n.to_str()) {
-                    if name_val != dir_name {
-                        emit_fm(
-                            &mut findings,
-                            "frontmatter/name-directory-mismatch",
-                            Severity::Warning,
-                            &format!(
-                                "Skill name '{}' does not match directory name '{}'",
-                                name_val, dir_name
-                            ),
-                            "Rename the skill directory to match the 'name' field, or update 'name' to match the directory",
-                            &skill_md,
-                            Some(name_line),
-                        );
+                // Skip this check when invalid-name-format already fired — the name
+                // is malformed anyway, so a mismatch finding would be pure noise.
+                let name_format_invalid = findings
+                    .iter()
+                    .any(|f| f.rule_id == "frontmatter/invalid-name-format");
+                if !name_format_invalid {
+                    if let Some(dir_name) = path.file_name().and_then(|n| n.to_str()) {
+                        if name_val != dir_name {
+                            emit_fm(
+                                &mut findings,
+                                "frontmatter/name-directory-mismatch",
+                                Severity::Warning,
+                                &format!(
+                                    "Skill name '{}' does not match directory name '{}'",
+                                    name_val, dir_name
+                                ),
+                                "Rename the skill directory to match the 'name' field, or update 'name' to match the directory",
+                                &skill_md,
+                                Some(name_line),
+                            );
+                        }
                     }
                 }
             }
@@ -600,10 +623,26 @@ impl Scanner for FrontmatterScanner {
             &skill_md,
         );
 
-        // Rule 12: SKILL.md body length.
-        // The best-practices guide recommends keeping SKILL.md under 500 lines to
-        // stay within context window budgets and keep skills focused.
-        let line_count = content.lines().count();
+        // Rules 12, 13, 15: single pass over SKILL.md body lines to avoid
+        // re-iterating `content` three times.
+        //
+        // - Rule 12: body too long (> 500 lines).
+        // - Rule 13: first Windows-style backslash path.
+        // - Rule 15: first time-sensitive date condition.
+        let mut line_count = 0usize;
+        let mut windows_path_line: Option<usize> = None;
+        let mut time_sensitive_line: Option<usize> = None;
+
+        for (idx, line) in content.lines().enumerate() {
+            line_count += 1;
+            if windows_path_line.is_none() && RE_WINDOWS_PATH.is_match(line) {
+                windows_path_line = Some(idx + 1);
+            }
+            if time_sensitive_line.is_none() && RE_TIME_SENSITIVE.is_match(line) {
+                time_sensitive_line = Some(idx + 1);
+            }
+        }
+
         if line_count > 500 {
             emit_fm(
                 &mut findings,
@@ -616,14 +655,7 @@ impl Scanner for FrontmatterScanner {
             );
         }
 
-        // Rule 13: Windows-style backslash paths.
-        // Forward slashes should be used in SKILL.md for cross-platform compatibility.
-        // Report only the first occurrence to keep output concise.
-        if let Some((idx, _)) = content
-            .lines()
-            .enumerate()
-            .find(|(_, line)| RE_WINDOWS_PATH.is_match(line))
-        {
+        if let Some(line_num) = windows_path_line {
             emit_fm(
                 &mut findings,
                 "frontmatter/windows-path",
@@ -631,19 +663,11 @@ impl Scanner for FrontmatterScanner {
                 "Windows-style backslash path in SKILL.md — use forward slashes",
                 "Replace backslash paths with forward slashes (e.g. path/to/file)",
                 &skill_md,
-                Some(idx + 1),
+                Some(line_num),
             );
         }
 
-        // Rule 15: Time-sensitive content.
-        // Date-based conditionals like "before August 2025" become stale and can
-        // cause Claude to follow outdated instructions.  The best-practices guide
-        // recommends using an "old patterns" section instead.
-        if let Some((idx, _)) = content
-            .lines()
-            .enumerate()
-            .find(|(_, line)| RE_TIME_SENSITIVE.is_match(line))
-        {
+        if let Some(line_num) = time_sensitive_line {
             emit_fm(
                 &mut findings,
                 "frontmatter/time-sensitive-content",
@@ -651,7 +675,7 @@ impl Scanner for FrontmatterScanner {
                 "SKILL.md contains time-sensitive date condition — this will become stale",
                 "Move dated content into an 'Old patterns' collapsible section instead",
                 &skill_md,
-                Some(idx + 1),
+                Some(line_num),
             );
         }
 

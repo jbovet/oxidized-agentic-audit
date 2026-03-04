@@ -16,7 +16,9 @@ use std::path::PathBuf;
 /// so collections of findings can be sorted by severity.
 ///
 /// Serializes to lowercase strings (`"error"`, `"warning"`, `"info"`).
-#[derive(Debug, Clone, PartialEq, Eq, PartialOrd, Ord, serde::Serialize, serde::Deserialize)]
+#[derive(
+    Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, serde::Serialize, serde::Deserialize,
+)]
 #[serde(rename_all = "lowercase")]
 pub enum Severity {
     /// Critical issue that must be resolved before the skill can be trusted.
