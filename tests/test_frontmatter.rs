@@ -849,3 +849,182 @@ fn no_date_conditions_no_time_sensitive_finding() {
         "No date conditions should not fire time-sensitive-content"
     );
 }
+
+// ---------------------------------------------------------------------------
+// Rule: frontmatter/description-no-trigger — extended phrase coverage
+// ---------------------------------------------------------------------------
+
+#[test]
+fn description_should_be_used_when_no_trigger_finding() {
+    // "should be used when" is a natural prose trigger phrase — must NOT fire.
+    // Matches the real skill-creator description pattern.
+    let dir = tempfile::tempdir().unwrap();
+    write_skill_md(
+        dir.path(),
+        &minimal_skill(
+            "my-skill",
+            "Guides users through a workflow. This skill should be used when a developer needs step-by-step help.",
+            "Bash(find)",
+        ),
+    );
+    let result = scan_dir(dir.path());
+    let found = result
+        .findings
+        .iter()
+        .any(|f| f.rule_id == "frontmatter/description-no-trigger");
+    assert!(
+        !found,
+        "description-no-trigger must not fire for 'should be used when'"
+    );
+}
+
+#[test]
+fn description_when_users_no_trigger_finding() {
+    // "when users" (plural) is a valid trigger phrase — must NOT fire.
+    let dir = tempfile::tempdir().unwrap();
+    write_skill_md(
+        dir.path(),
+        &minimal_skill(
+            "my-skill",
+            "Automates release notes. Use when users want to publish a new version.",
+            "Bash(find)",
+        ),
+    );
+    let result = scan_dir(dir.path());
+    let found = result
+        .findings
+        .iter()
+        .any(|f| f.rule_id == "frontmatter/description-no-trigger");
+    assert!(
+        !found,
+        "description-no-trigger must not fire for 'when users'"
+    );
+}
+
+#[test]
+fn description_when_a_user_no_trigger_finding() {
+    // "when a user" is a valid trigger phrase — must NOT fire.
+    let dir = tempfile::tempdir().unwrap();
+    write_skill_md(
+        dir.path(),
+        &minimal_skill(
+            "my-skill",
+            "Sends Slack notifications. Invoke when a user requests a status update.",
+            "Bash(find)",
+        ),
+    );
+    let result = scan_dir(dir.path());
+    let found = result
+        .findings
+        .iter()
+        .any(|f| f.rule_id == "frontmatter/description-no-trigger");
+    assert!(
+        !found,
+        "description-no-trigger must not fire for 'when a user'"
+    );
+}
+
+#[test]
+fn description_use_it_when_no_trigger_finding() {
+    // "use it when" is a valid trigger phrase — must NOT fire.
+    let dir = tempfile::tempdir().unwrap();
+    write_skill_md(
+        dir.path(),
+        &minimal_skill(
+            "my-skill",
+            "Validates JSON schemas. Use it when processing API responses.",
+            "Bash(find)",
+        ),
+    );
+    let result = scan_dir(dir.path());
+    let found = result
+        .findings
+        .iter()
+        .any(|f| f.rule_id == "frontmatter/description-no-trigger");
+    assert!(
+        !found,
+        "description-no-trigger must not fire for 'use it when'"
+    );
+}
+
+#[test]
+fn description_useful_when_no_trigger_finding() {
+    // "useful when" is a valid trigger phrase — must NOT fire.
+    let dir = tempfile::tempdir().unwrap();
+    write_skill_md(
+        dir.path(),
+        &minimal_skill(
+            "my-skill",
+            "Parses log files into structured data. Useful when diagnosing production incidents.",
+            "Bash(find)",
+        ),
+    );
+    let result = scan_dir(dir.path());
+    let found = result
+        .findings
+        .iter()
+        .any(|f| f.rule_id == "frontmatter/description-no-trigger");
+    assert!(
+        !found,
+        "description-no-trigger must not fire for 'useful when'"
+    );
+}
+
+// ---------------------------------------------------------------------------
+// Rule: frontmatter/name-directory-mismatch
+// ---------------------------------------------------------------------------
+
+#[test]
+fn name_matches_directory_no_mismatch_finding() {
+    // skill name == directory name → no finding.
+    let base = tempfile::tempdir().unwrap();
+    let skill_dir = base.path().join("my-skill");
+    std::fs::create_dir_all(&skill_dir).unwrap();
+    write_skill_md(
+        &skill_dir,
+        "---\nname: my-skill\ndescription: A skill. Use when needed.\nallowed-tools:\n  - Bash(find)\n---\n",
+    );
+    let result = scan_dir(&skill_dir);
+    let found = result
+        .findings
+        .iter()
+        .any(|f| f.rule_id == "frontmatter/name-directory-mismatch");
+    assert!(
+        !found,
+        "name-directory-mismatch must not fire when name matches directory"
+    );
+}
+
+#[test]
+fn name_mismatch_directory_fires_warning() {
+    // name: other-name inside directory my-skill → should fire.
+    let base = tempfile::tempdir().unwrap();
+    let skill_dir = base.path().join("my-skill");
+    std::fs::create_dir_all(&skill_dir).unwrap();
+    write_skill_md(
+        &skill_dir,
+        "---\nname: other-name\ndescription: A skill. Use when needed.\nallowed-tools:\n  - Bash(find)\n---\n",
+    );
+    let result = scan_dir(&skill_dir);
+    let found = result.findings.iter().any(|f| {
+        f.rule_id == "frontmatter/name-directory-mismatch" && f.severity == Severity::Warning
+    });
+    assert!(
+        found,
+        "name-directory-mismatch (Warning) must fire when name != directory name"
+    );
+}
+
+#[test]
+fn name_mismatch_fixture_fires() {
+    // The name-mismatch-skill fixture has name: wrong-name but lives in name-mismatch-skill/
+    let result = scan_fixture("name-mismatch-skill");
+    let found = result
+        .findings
+        .iter()
+        .any(|f| f.rule_id == "frontmatter/name-directory-mismatch");
+    assert!(
+        found,
+        "name-mismatch-skill fixture should trigger frontmatter/name-directory-mismatch"
+    );
+}

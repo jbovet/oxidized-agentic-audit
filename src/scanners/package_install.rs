@@ -11,6 +11,8 @@
 //! | `pkg/F1-npm` | Warning | `npm install` without explicit `--registry` |
 //! | `pkg/F1-bun` | Warning | `bun add` without explicit `--registry` |
 //! | `pkg/F1-pip` | Warning | `pip install` without explicit `--index-url` |
+//! | `pkg/F1-yarn` | Warning | `yarn add` without explicit `--registry` |
+//! | `pkg/F1-pnpm` | Warning | `pnpm add/install` without explicit `--registry` |
 //! | `pkg/F2-unpinned` | Warning | `@latest` — unpinned version |
 //! | `pkg/F3-registry` | Warning | Registry URL not in allowlist |
 //!
@@ -41,6 +43,12 @@ static RE_BUN_ADD: LazyLock<Regex> =
 
 static RE_PIP_INSTALL: LazyLock<Regex> =
     LazyLock::new(|| Regex::new(r"(?i)\bpip3?\s+install\b").unwrap());
+
+static RE_YARN_ADD: LazyLock<Regex> =
+    LazyLock::new(|| Regex::new(r"(?i)\byarn\s+(add|install)\b").unwrap());
+
+static RE_PNPM_ADD: LazyLock<Regex> =
+    LazyLock::new(|| Regex::new(r"(?i)\bpnpm\s+(add|install|i)\b").unwrap());
 
 static RE_LATEST: LazyLock<Regex> = LazyLock::new(|| Regex::new(r"@latest\b").unwrap());
 
@@ -200,6 +208,34 @@ impl Scanner for PackageInstallScanner {
                     );
                 }
 
+                // yarn add/install without --registry
+                if RE_YARN_ADD.is_match(line) && !RE_HAS_REGISTRY.is_match(line) {
+                    emit(
+                        &mut findings,
+                        "pkg/F1-yarn",
+                        Severity::Warning,
+                        "yarn add without --registry — may pull from unexpected source",
+                        "Specify --registry explicitly: yarn add --registry https://registry.npmjs.org <pkg>",
+                        file,
+                        line_num,
+                        line,
+                    );
+                }
+
+                // pnpm add/install without --registry
+                if RE_PNPM_ADD.is_match(line) && !RE_HAS_REGISTRY.is_match(line) {
+                    emit(
+                        &mut findings,
+                        "pkg/F1-pnpm",
+                        Severity::Warning,
+                        "pnpm add/install without --registry — may pull from unexpected source",
+                        "Specify --registry explicitly: pnpm add --registry https://registry.npmjs.org <pkg>",
+                        file,
+                        line_num,
+                        line,
+                    );
+                }
+
                 // @latest unpinned version
                 if RE_LATEST.is_match(line) {
                     emit(
@@ -291,6 +327,20 @@ pub fn rules() -> Vec<RuleInfo> {
             scanner: "package_install",
             message: "pip install without --index-url — may pull from unexpected source",
             remediation: "Specify --index-url explicitly: pip install --index-url https://pypi.org/simple/",
+        },
+        RuleInfo {
+            id: "pkg/F1-yarn",
+            severity: "warning",
+            scanner: "package_install",
+            message: "yarn add without --registry — may pull from unexpected source",
+            remediation: "Specify --registry explicitly: yarn add --registry https://registry.npmjs.org <pkg>",
+        },
+        RuleInfo {
+            id: "pkg/F1-pnpm",
+            severity: "warning",
+            scanner: "package_install",
+            message: "pnpm add/install without --registry — may pull from unexpected source",
+            remediation: "Specify --registry explicitly: pnpm add --registry https://registry.npmjs.org <pkg>",
         },
         RuleInfo {
             id: "pkg/F2-unpinned",

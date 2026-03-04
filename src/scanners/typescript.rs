@@ -8,7 +8,7 @@
 //! | Category | Severity | What it detects |
 //! |----------|----------|-----------------|
 //! | **A** — Arbitrary Code Execution | Error | `eval()`, `new Function()` |
-//! | **B** — Shell Execution | Warning | `child_process` import and `execSync`/`spawnSync` calls |
+//! | **B** — Shell Execution | Warning/Info | `child_process` import, `execSync`/`spawnSync` (sync), `exec`/`spawn`/`execFile` (async) |
 //! | **C** — Credential Access | Error | Paths referencing SSH keys, AWS, or kubeconfig files |
 //! | **D** — Reverse Shell / Backdoors | Error | Node.js `net` module raw socket connections |
 //! | **H** — Unallowlisted Outbound | Info | `fetch`/`axios`/`got` to domains not in allowlist |
@@ -73,6 +73,13 @@ static PATTERNS: &[TsPattern] = &[
         message: "execSync/spawnSync call — executes shell commands synchronously",
         remediation:
             "Replace synchronous shell calls with typed API clients or Node.js built-in equivalents",
+    },
+    TsPattern {
+        id: "typescript/CAT-B3",
+        severity: Severity::Info,
+        message: "exec/spawn/execFile call — possible async shell execution; verify child_process context",
+        remediation:
+            "If imported from child_process, replace with typed API clients; add // audit:ignore if unrelated to child_process",
     },
     // ── Category C: Credential File Access ──────────────────────────────────
     TsPattern {
@@ -145,6 +152,12 @@ static PATTERN_SET: LazyLock<RegexSet> = LazyLock::new(|| {
         // CAT-B2: execSync / spawnSync / execFileSync — synchronous shell execution.
         // These names are distinct enough to pattern-match without the module context.
         r"\b(?:execSync|spawnSync|execFileSync)\s*\(",
+        // CAT-B3: exec / spawn / execFile — async child_process variants.
+        // Lower-confidence than sync forms (these names appear in other contexts too);
+        // severity is Info so authors can verify child_process context before acting.
+        // Uses the same negative-lookbehind pattern as CAT-A1 to exclude method calls
+        // like `/regex/.exec(str)` or `db.exec(query)` where the name is preceded by `.`.
+        r"(?:^|[^.a-zA-Z_$])(?:exec|execFile|spawn)\s*\(",
         // CAT-C1: SSH key paths (covers private keys and config files)
         r"(?i)\.ssh[/\\](?:id_rsa|id_ed25519|id_ecdsa|id_dsa|id_xmss|authorized_keys|known_hosts)",
         // CAT-C2: AWS credentials file

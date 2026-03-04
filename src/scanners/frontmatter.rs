@@ -23,6 +23,7 @@
 //! | `frontmatter/skill-body-too-long` | Warning | SKILL.md must be ≤ 500 lines |
 //! | `frontmatter/windows-path` | Warning | No backslash paths |
 //! | `frontmatter/time-sensitive-content` | Warning | No date-conditional language |
+//! | `frontmatter/name-directory-mismatch` | Warning | `name` must match the directory name |
 //!
 //! # Frontmatter parsing
 //!
@@ -69,6 +70,10 @@ static RE_TIME_SENSITIVE: LazyLock<regex::Regex> = LazyLock::new(|| {
 /// Keyword phrases that signal "when to use" context in a description.
 /// The checklist requires descriptions to include both what a Skill does AND
 /// when to invoke it so Claude can select the right Skill from many.
+///
+/// Covers both terse forms ("use when") and natural prose forms
+/// ("should be used when", "when users want to…") to avoid false
+/// positives on well-written descriptions.
 const TRIGGER_PHRASES: &[&str] = &[
     "use when",
     "when the user",
@@ -77,6 +82,12 @@ const TRIGGER_PHRASES: &[&str] = &[
     "when you need",
     "trigger",
     "invoke when",
+    // Natural prose variants found in real skill descriptions
+    "should be used when",
+    "when users",
+    "when a user",
+    "use it when",
+    "useful when",
 ];
 
 // ---------------------------------------------------------------------------
@@ -557,6 +568,26 @@ impl Scanner for FrontmatterScanner {
         if let Some(ref fm) = fm {
             if let Some((ref name_val, name_line)) = fm.name {
                 validate_name(&mut findings, name_val, name_line, &skill_md);
+
+                // Rule 16: name must match the containing directory name.
+                // The Claude skill spec requires the `name` field to match the
+                // directory so registries and runtimes can locate the skill by name.
+                if let Some(dir_name) = path.file_name().and_then(|n| n.to_str()) {
+                    if name_val != dir_name {
+                        emit_fm(
+                            &mut findings,
+                            "frontmatter/name-directory-mismatch",
+                            Severity::Warning,
+                            &format!(
+                                "Skill name '{}' does not match directory name '{}'",
+                                name_val, dir_name
+                            ),
+                            "Rename the skill directory to match the 'name' field, or update 'name' to match the directory",
+                            &skill_md,
+                            Some(name_line),
+                        );
+                    }
+                }
             }
             validate_allowed_tools(&mut findings, &fm.allowed_tools, &skill_md);
         }
@@ -755,6 +786,13 @@ pub fn rules() -> Vec<RuleInfo> {
             scanner: "frontmatter",
             message: "SKILL.md contains a time-sensitive date condition that will become stale",
             remediation: "Move dated content into an 'Old patterns' collapsible section",
+        },
+        RuleInfo {
+            id: "frontmatter/name-directory-mismatch",
+            severity: "warning",
+            scanner: "frontmatter",
+            message: "Skill name does not match the containing directory name",
+            remediation: "Rename the skill directory to match the 'name' field, or update 'name' to match the directory",
         },
     ]
 }

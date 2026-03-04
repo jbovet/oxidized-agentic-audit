@@ -255,6 +255,140 @@ fn registry_equals_form_approved_host_no_findings() {
 }
 
 // ---------------------------------------------------------------------------
+// Rule: pkg/F1-yarn
+// ---------------------------------------------------------------------------
+
+#[test]
+fn yarn_add_without_registry_fires_f1_yarn() {
+    let dir = tempfile::tempdir().unwrap();
+    let scripts_dir = dir.path().join("scripts");
+    std::fs::create_dir_all(&scripts_dir).unwrap();
+    std::fs::write(
+        scripts_dir.join("install.sh"),
+        "#!/bin/bash\nyarn add lodash\n",
+    )
+    .unwrap();
+
+    let config = Config::default();
+    let result = PackageInstallScanner.scan(dir.path(), &config);
+    let found = result
+        .findings
+        .iter()
+        .any(|f| f.rule_id == "pkg/F1-yarn" && f.severity == Severity::Warning);
+    assert!(
+        found,
+        "yarn add without --registry must trigger pkg/F1-yarn"
+    );
+}
+
+#[test]
+fn yarn_install_without_registry_fires_f1_yarn() {
+    let dir = tempfile::tempdir().unwrap();
+    let scripts_dir = dir.path().join("scripts");
+    std::fs::create_dir_all(&scripts_dir).unwrap();
+    std::fs::write(
+        scripts_dir.join("install.sh"),
+        "#!/bin/bash\nyarn install\n",
+    )
+    .unwrap();
+
+    let config = Config::default();
+    let result = PackageInstallScanner.scan(dir.path(), &config);
+    let found = result.findings.iter().any(|f| f.rule_id == "pkg/F1-yarn");
+    assert!(
+        found,
+        "yarn install without --registry must trigger pkg/F1-yarn"
+    );
+}
+
+#[test]
+fn yarn_add_with_registry_no_f1_yarn() {
+    let dir = tempfile::tempdir().unwrap();
+    let scripts_dir = dir.path().join("scripts");
+    std::fs::create_dir_all(&scripts_dir).unwrap();
+    std::fs::write(
+        scripts_dir.join("install.sh"),
+        "#!/bin/bash\nyarn add --registry https://registry.npmjs.org lodash\n",
+    )
+    .unwrap();
+
+    let config = Config::default();
+    let result = PackageInstallScanner.scan(dir.path(), &config);
+    let found = result.findings.iter().any(|f| f.rule_id == "pkg/F1-yarn");
+    assert!(
+        !found,
+        "yarn add with --registry must not trigger pkg/F1-yarn"
+    );
+}
+
+// ---------------------------------------------------------------------------
+// Rule: pkg/F1-pnpm
+// ---------------------------------------------------------------------------
+
+#[test]
+fn pnpm_add_without_registry_fires_f1_pnpm() {
+    let dir = tempfile::tempdir().unwrap();
+    let scripts_dir = dir.path().join("scripts");
+    std::fs::create_dir_all(&scripts_dir).unwrap();
+    std::fs::write(
+        scripts_dir.join("install.sh"),
+        "#!/bin/bash\npnpm add express\n",
+    )
+    .unwrap();
+
+    let config = Config::default();
+    let result = PackageInstallScanner.scan(dir.path(), &config);
+    let found = result
+        .findings
+        .iter()
+        .any(|f| f.rule_id == "pkg/F1-pnpm" && f.severity == Severity::Warning);
+    assert!(
+        found,
+        "pnpm add without --registry must trigger pkg/F1-pnpm"
+    );
+}
+
+#[test]
+fn pnpm_install_without_registry_fires_f1_pnpm() {
+    let dir = tempfile::tempdir().unwrap();
+    let scripts_dir = dir.path().join("scripts");
+    std::fs::create_dir_all(&scripts_dir).unwrap();
+    std::fs::write(
+        scripts_dir.join("install.sh"),
+        "#!/bin/bash\npnpm install\n",
+    )
+    .unwrap();
+
+    let config = Config::default();
+    let result = PackageInstallScanner.scan(dir.path(), &config);
+    let found = result.findings.iter().any(|f| f.rule_id == "pkg/F1-pnpm");
+    assert!(
+        found,
+        "pnpm install without --registry must trigger pkg/F1-pnpm"
+    );
+}
+
+#[test]
+fn pnpm_with_registry_no_f1_pnpm() {
+    let dir = tempfile::tempdir().unwrap();
+    let scripts_dir = dir.path().join("scripts");
+    std::fs::create_dir_all(&scripts_dir).unwrap();
+    std::fs::write(
+        scripts_dir.join("install.sh"),
+        "#!/bin/bash\npnpm add --registry https://registry.npmjs.org express\n",
+    )
+    .unwrap();
+
+    let config = Config::default();
+    let result = PackageInstallScanner.scan(dir.path(), &config);
+    let found = result.findings.iter().any(|f| f.rule_id == "pkg/F1-pnpm");
+    assert!(
+        !found,
+        "pnpm add with --registry must not trigger pkg/F1-pnpm"
+    );
+}
+
+// ---------------------------------------------------------------------------
 // Fix #1: Snippet truncation does not panic on multi-byte UTF-8 characters
 // ---------------------------------------------------------------------------
 

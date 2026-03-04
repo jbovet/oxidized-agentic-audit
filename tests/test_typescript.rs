@@ -192,6 +192,96 @@ fn child_process_es_import_fires_cat_b1() {
 }
 
 // ---------------------------------------------------------------------------
+// Category B: Shell Execution — CAT-B3 async variants
+// ---------------------------------------------------------------------------
+
+#[test]
+fn exec_call_fires_cat_b3_info() {
+    // exec() from child_process (async variant) must fire CAT-B3 at Info severity.
+    let result =
+        scan_ts_content("const { exec } = require('child_process');\nexec('ls -la', callback);\n");
+    let b3: Vec<_> = result
+        .findings
+        .iter()
+        .filter(|f| f.rule_id == "typescript/CAT-B3")
+        .collect();
+    assert!(!b3.is_empty(), "exec() call must fire typescript/CAT-B3");
+    assert_eq!(b3[0].severity, Severity::Info);
+}
+
+#[test]
+fn spawn_call_fires_cat_b3_info() {
+    let result = scan_ts_content("spawn('git', ['status']);\n");
+    let b3: Vec<_> = result
+        .findings
+        .iter()
+        .filter(|f| f.rule_id == "typescript/CAT-B3")
+        .collect();
+    assert!(!b3.is_empty(), "spawn() call must fire typescript/CAT-B3");
+    assert_eq!(b3[0].severity, Severity::Info);
+}
+
+#[test]
+fn exec_file_call_fires_cat_b3_info() {
+    let result = scan_ts_content("execFile('/usr/bin/git', ['log'], callback);\n");
+    let b3: Vec<_> = result
+        .findings
+        .iter()
+        .filter(|f| f.rule_id == "typescript/CAT-B3")
+        .collect();
+    assert!(
+        !b3.is_empty(),
+        "execFile() call must fire typescript/CAT-B3"
+    );
+}
+
+#[test]
+fn exec_sync_still_fires_cat_b2_warning() {
+    // CAT-B2 (Warning) must still fire for execSync — adding B3 must not regress B2.
+    let result = scan_ts_content("execSync('ls');\n");
+    let b2: Vec<_> = result
+        .findings
+        .iter()
+        .filter(|f| f.rule_id == "typescript/CAT-B2")
+        .collect();
+    assert!(
+        !b2.is_empty(),
+        "execSync() must still fire typescript/CAT-B2 (regression guard)"
+    );
+    assert_eq!(b2[0].severity, Severity::Warning);
+}
+
+#[test]
+fn exec_with_suppress_is_skipped() {
+    let result = scan_ts_content("exec('harmless'); // audit:ignore\n");
+    let b3: Vec<_> = result
+        .findings
+        .iter()
+        .filter(|f| f.rule_id == "typescript/CAT-B3")
+        .collect();
+    assert!(
+        b3.is_empty(),
+        "exec() with // audit:ignore must not produce CAT-B3"
+    );
+}
+
+#[test]
+fn regex_exec_method_no_cat_b3_false_positive() {
+    // /regex/.exec(str) is a RegExp method call, NOT a child_process call.
+    // The `.` before exec must suppress CAT-B3 — matches the clean-ts-skill fixture pattern.
+    let result = scan_ts_content("const match = /v(\\d+\\.\\d+\\.\\d+)/.exec(text);\n");
+    let b3: Vec<_> = result
+        .findings
+        .iter()
+        .filter(|f| f.rule_id == "typescript/CAT-B3")
+        .collect();
+    assert!(
+        b3.is_empty(),
+        "/regex/.exec() must NOT trigger CAT-B3 — it is a RegExp method, not child_process"
+    );
+}
+
+// ---------------------------------------------------------------------------
 // Category C: Credential File Access
 // ---------------------------------------------------------------------------
 
@@ -487,6 +577,7 @@ fn rules_catalogue_covers_all_categories() {
         "typescript/CAT-A2",
         "typescript/CAT-B1",
         "typescript/CAT-B2",
+        "typescript/CAT-B3",
         "typescript/CAT-C1",
         "typescript/CAT-C2",
         "typescript/CAT-C3",

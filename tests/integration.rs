@@ -164,13 +164,13 @@ fn audit_all_discovers_skills_and_prints_summary() {
 #[test]
 fn audit_all_exits_0_when_all_pass() {
     let dir = tempfile::tempdir().unwrap();
-    // Populate two minimal passing skills
+    // Populate two minimal passing skills (name matches directory to satisfy name-directory-mismatch rule)
     for name in &["alpha", "beta"] {
         let skill_dir = dir.path().join(name);
         std::fs::create_dir_all(&skill_dir).unwrap();
         std::fs::write(
             skill_dir.join("SKILL.md"),
-            "---\nname: test-skill\ndescription: A test skill. Use when testing.\nallowed-tools:\n  - Read\n---\n# Test\n",
+            format!("---\nname: {name}\ndescription: A test skill. Use when testing.\nallowed-tools:\n  - Read\n---\n# Test\n"),
         )
         .unwrap();
     }
@@ -271,10 +271,11 @@ fn min_score_audit_all_shows_below_min_count_in_footer() {
 #[test]
 fn min_score_audit_all_passes_when_all_above_threshold() {
     let dir = tempfile::tempdir().unwrap();
-    let skill_md = "---\nname: test-skill\ndescription: A test skill. Use when testing.\nallowed-tools:\n  - Read\n---\n# Test\n";
+    // name matches directory to satisfy name-directory-mismatch rule
     for name in &["alpha", "beta"] {
         let skill_dir = dir.path().join(name);
         std::fs::create_dir_all(&skill_dir).unwrap();
+        let skill_md = format!("---\nname: {name}\ndescription: A test skill. Use when testing.\nallowed-tools:\n  - Read\n---\n# Test\n");
         std::fs::write(skill_dir.join("SKILL.md"), skill_md).unwrap();
     }
 
