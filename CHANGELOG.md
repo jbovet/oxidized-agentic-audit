@@ -7,6 +7,27 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.3.0] - 2026-03-04
+
+### Added
+- **TypeScript/JavaScript security scanner** — new built-in `typescript` scanner (no external tools required) detects risky patterns in `*.ts`, `*.tsx`, `*.mts`, `*.js`, `*.mjs` files across five categories: arbitrary code execution (`eval()`, `new Function()`), shell execution via `child_process` (`execSync`, `spawnSync`, `exec`, `spawn`, `execFile`), credential access (SSH keys, AWS, kubeconfig paths), reverse shells/backdoors (raw Node.js `net` socket connections), and unallowlisted outbound network calls (`fetch`/`axios`/`got`). Supports inline `// audit:ignore` suppression and domain allowlist for outbound rules.
+- **`pkg/F1-yarn` rule** — flags `yarn add`/`yarn install` without an explicit `--registry` flag.
+- **`pkg/F1-pnpm` rule** — flags `pnpm add`/`pnpm install` without an explicit `--registry` flag.
+- **`frontmatter/name-dir-mismatch` rule** — reports when the `name` field in `SKILL.md` does not match the skill's parent directory name, catching packaging mistakes before publication.
+- **Suppression path validation** — `.oxidized-skills-ignore` entries are now validated; paths that do not exist inside the skill directory emit a warning instead of silently being ignored.
+- **Semgrep config validation** — the semgrep scanner now validates the resolved config path before invoking the tool, providing an actionable error when the config file is missing.
+- **Comprehensive regression test suite** — new test modules for frontmatter, bash patterns, TypeScript, and package-install scanners covering edge cases and suppress logic.
+
+### Changed
+- Bash pattern scanner refactored for cleaner rule definitions and improved parse-error resilience.
+- Prompt injection scanner logic streamlined; false-positive rate reduced on boilerplate files.
+- Scanner module restructured with shared `collect_files` and `is_suppressed_inline` helpers, reducing duplication across all built-in scanners.
+- `Finding` and `ScanResult` types have improved `Display` and `Debug` implementations.
+
+### Fixed
+- Linter warnings (`clippy`) resolved across scanner modules.
+- Semgrep scanner no longer emits spurious errors when the config path contains whitespace.
+
 ## [0.2.0] - 2026-03-02
 
 ### Added
@@ -54,7 +75,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - **Docker images** — slim (~8 MB, scratch base) and full (~245 MB, includes shellcheck + gitleaks + semgrep) variants published to GHCR
 - **CI/CD** — GitHub Actions workflows for CI (test + lint + fmt) and release (binaries + Docker images)
 
-[Unreleased]: https://github.com/jbovet/oxidized-skills/compare/v0.2.0...HEAD
+[Unreleased]: https://github.com/jbovet/oxidized-skills/compare/v0.3.0...HEAD
+[0.3.0]: https://github.com/jbovet/oxidized-skills/compare/v0.2.0...v0.3.0
 [0.2.0]: https://github.com/jbovet/oxidized-skills/compare/v0.1.1...v0.2.0
 [0.1.1]: https://github.com/jbovet/oxidized-skills/releases/tag/v0.1.1
 [0.1.0]: https://github.com/jbovet/oxidized-skills/releases/tag/v0.1.0
