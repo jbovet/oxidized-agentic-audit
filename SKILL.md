@@ -14,7 +14,11 @@ Run `oxidized-skills audit <path>` to scan a skill directory. The tool checks sh
 ## Quick start
 
 ```bash
+# Single skill
 oxidized-skills audit ./path/to/skill
+
+# All skills in a collection directory
+oxidized-skills audit-all ./path/to/skills/
 ```
 
 ## Output formats
@@ -36,6 +40,15 @@ Treat warnings as errors (exit code 1 on any warning):
 
 ```bash
 oxidized-skills audit ./skill --strict
+```
+
+## Score threshold (CI gate)
+
+Fail if the security score falls below a minimum (0–100):
+
+```bash
+oxidized-skills audit ./skill --strict --min-score 80
+oxidized-skills audit-all ./skills/ --strict --min-score 80
 ```
 
 ## Custom configuration
@@ -155,6 +168,7 @@ Fix each Error, then re-run. Warnings do not block unless `--strict` is active.
 Core scanners (no external tools required):
 
 - **bash_patterns** — 19 regex rules for RCE, credential exfiltration, destructive ops, reverse shells, privilege escalation
+- **typescript** — same dangerous-pattern rules applied to TypeScript / JavaScript files
 - **prompt** — 19 patterns for instruction override, role manipulation, jailbreak attempts, data exfiltration
 - **frontmatter** — 15 rules for SKILL.md structure, name format, description quality, allowed-tools safety
 - **package_install** — package manager calls without pinned registry, unpinned versions
