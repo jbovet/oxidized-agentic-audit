@@ -110,26 +110,26 @@ Download a pre-built binary for your platform from the [latest release](https://
 
 **Linux (x86_64):**
 ```bash
-curl -L https://github.com/jbovet/oxidized-skills/releases/download/v0.3.0/oxidized-skills-linux-x86_64.tar.gz | tar xz
+curl -L https://github.com/jbovet/oxidized-skills/releases/download/v0.3.1/oxidized-skills-linux-x86_64.tar.gz | tar xz
 sudo mv oxidized-skills /usr/local/bin/
 ```
 
 **macOS (Intel x86_64):**
 ```bash
-curl -L https://github.com/jbovet/oxidized-skills/releases/download/v0.3.0/oxidized-skills-macos-x86_64.tar.gz | tar xz
+curl -L https://github.com/jbovet/oxidized-skills/releases/download/v0.3.1/oxidized-skills-macos-x86_64.tar.gz | tar xz
 sudo mv oxidized-skills /usr/local/bin/
 ```
 
 **macOS (Apple Silicon / ARM64):**
 ```bash
-curl -L https://github.com/jbovet/oxidized-skills/releases/download/v0.3.0/oxidized-skills-macos-aarch64.tar.gz | tar xz
+curl -L https://github.com/jbovet/oxidized-skills/releases/download/v0.3.1/oxidized-skills-macos-aarch64.tar.gz | tar xz
 sudo mv oxidized-skills /usr/local/bin/
 ```
 
 **Windows (x86_64):**
 Download `oxidized-skills-windows-x86_64.zip` from [releases](https://github.com/jbovet/oxidized-skills/releases), extract it, and add the folder to your `PATH`.
 
-> **Tip:** Replace `v0.3.0` with the latest version from [releases](https://github.com/jbovet/oxidized-skills/releases).
+> **Tip:** Replace `v0.3.1` with the latest version from [releases](https://github.com/jbovet/oxidized-skills/releases).
 
 ## Usage
 

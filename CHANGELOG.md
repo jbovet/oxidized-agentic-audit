@@ -7,6 +7,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.3.1] - 2026-03-06
+
 ### Security
 
 - **`bash/CAT-A1` — pipe-to-shell** now detects absolute shell paths (`| /bin/bash`, `| /usr/bin/env bash`) and `dash` in addition to bare shell names, closing bypass via absolute paths and environment launchers.
@@ -91,7 +93,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - **Docker images** — slim (~8 MB, scratch base) and full (~245 MB, includes shellcheck + gitleaks + semgrep) variants published to GHCR
 - **CI/CD** — GitHub Actions workflows for CI (test + lint + fmt) and release (binaries + Docker images)
 
-[Unreleased]: https://github.com/jbovet/oxidized-skills/compare/v0.3.0...HEAD
+[Unreleased]: https://github.com/jbovet/oxidized-skills/compare/v0.3.1...HEAD
+[0.3.1]: https://github.com/jbovet/oxidized-skills/compare/v0.3.0...v0.3.1
 [0.3.0]: https://github.com/jbovet/oxidized-skills/compare/v0.2.0...v0.3.0
 [0.2.0]: https://github.com/jbovet/oxidized-skills/compare/v0.1.1...v0.2.0
 [0.1.1]: https://github.com/jbovet/oxidized-skills/releases/tag/v0.1.1
