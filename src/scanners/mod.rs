@@ -9,10 +9,8 @@
 //!   (gitleaks), [`semgrep`].
 //!
 //! Use [`skill_scanners`] / [`agent_scanners`] to obtain the scanner set for
-//! the appropriate audit mode, and [`all_rules`] / [`all_agent_rules`] to list
-//! every rule they define.
-//!
-//! [`all_scanners`] is kept as a backward-compatible alias for [`skill_scanners`].
+//! the appropriate audit mode, and [`all_rules`] / [`all_agent_rules`] /
+//! [`all_unique_rules`] to list every rule they define.
 
 pub mod agent_frontmatter;
 pub mod bash_patterns;
@@ -110,13 +108,6 @@ pub fn agent_scanners() -> Vec<Box<dyn Scanner>> {
         Box::new(secrets::SecretsScanner),
         Box::new(semgrep::SemgrepScanner),
     ]
-}
-
-/// Backward-compatible alias for [`skill_scanners`].
-///
-/// Existing call sites (e.g. `CheckTools`) continue to work without change.
-pub fn all_scanners() -> Vec<Box<dyn Scanner>> {
-    skill_scanners()
 }
 
 /// Recursively collects files matching the given extensions.
@@ -527,6 +518,20 @@ pub fn all_rules() -> Vec<RuleInfo> {
     rules.extend(shellcheck::rules());
     rules.extend(secrets::rules());
     rules.extend(semgrep::rules());
+    rules
+}
+
+/// Aggregates all rules across both **skill** and **agent** scanner sets,
+/// deduplicating shared scanners so each rule appears exactly once.
+///
+/// Includes skill-specific [`frontmatter`] rules plus agent-specific
+/// [`agent_frontmatter`] rules, along with every shared scanner's rules.
+/// Useful for `list-rules --mode all` and `explain --mode all`.
+pub fn all_unique_rules() -> Vec<RuleInfo> {
+    // Start from the full skill rule set, then append the agent-only
+    // frontmatter rules (all other scanners are identical across both modes).
+    let mut rules = all_rules();
+    rules.extend(agent_frontmatter::rules());
     rules
 }
 
