@@ -20,6 +20,15 @@ pub struct Cli {
     pub command: Commands,
 }
 
+/// Selects whether to audit a skill or an agent.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, ValueEnum)]
+pub enum AuditType {
+    /// Audit a skill directory (looks for SKILL.md).
+    Skill,
+    /// Audit an agent directory (looks for AGENT.md).
+    Agent,
+}
+
 /// Selects which rule set to display for `list-rules` and `explain`.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, ValueEnum)]
 pub enum RuleMode {
@@ -34,10 +43,15 @@ pub enum RuleMode {
 /// Available subcommands.
 #[derive(Subcommand)]
 pub enum Commands {
-    /// Audit a single skill directory for security issues.
+    /// Audit a single skill or agent directory for security issues.
     Audit {
-        /// Path to the skill directory (must contain a SKILL.md).
+        /// Path to the directory to audit.
+        /// Must contain SKILL.md (--type skill) or AGENT.md (--type agent).
         path: PathBuf,
+
+        /// Whether to audit a skill (default) or an agent.
+        #[arg(long = "type", default_value = "skill", value_enum)]
+        audit_type: AuditType,
 
         /// Output format (pretty, json, or sarif).
         #[arg(long, short, default_value = "pretty", value_enum)]
@@ -56,16 +70,20 @@ pub enum Commands {
         config: Option<PathBuf>,
 
         /// Fail if the security score is below this threshold (0–100).
-        /// Useful as a CI gate: `--min-score 80` rejects any skill scoring below 80.
+        /// Useful as a CI gate: `--min-score 80` rejects any skill or agent scoring below 80.
         #[arg(long, value_name = "N")]
         min_score: Option<u8>,
     },
 
-    /// Audit every skill directory inside a collection directory.
+    /// Audit every skill or agent directory inside a collection directory.
     #[command(name = "audit-all")]
     AuditAll {
-        /// Path to a directory containing multiple skill subdirectories.
+        /// Path to a directory containing multiple skill or agent subdirectories.
         path: PathBuf,
+
+        /// Whether to audit skills (default) or agents.
+        #[arg(long = "type", default_value = "skill", value_enum)]
+        audit_type: AuditType,
 
         /// Output format (pretty, json, or sarif).
         #[arg(long, short, default_value = "pretty", value_enum)]
@@ -79,57 +97,7 @@ pub enum Commands {
         #[arg(long)]
         config: Option<PathBuf>,
 
-        /// Fail if any skill's security score is below this threshold (0–100).
-        #[arg(long, value_name = "N")]
-        min_score: Option<u8>,
-    },
-
-    /// Audit a single agent directory for security issues.
-    #[command(name = "audit-agent")]
-    AuditAgent {
-        /// Path to the agent directory (must contain an AGENT.md).
-        path: PathBuf,
-
-        /// Output format (pretty, json, or sarif).
-        #[arg(long, short, default_value = "pretty", value_enum)]
-        format: OutputFormat,
-
-        /// Write output to a file instead of stdout.
-        #[arg(long, short)]
-        output: Option<PathBuf>,
-
-        /// Treat warnings as errors (exit code 1 on warnings).
-        #[arg(long)]
-        strict: bool,
-
-        /// Path to a custom configuration file.
-        #[arg(long)]
-        config: Option<PathBuf>,
-
-        /// Fail if the security score is below this threshold (0–100).
-        #[arg(long, value_name = "N")]
-        min_score: Option<u8>,
-    },
-
-    /// Audit every agent directory inside a collection directory.
-    #[command(name = "audit-all-agents")]
-    AuditAllAgents {
-        /// Path to a directory containing multiple agent subdirectories.
-        path: PathBuf,
-
-        /// Output format (pretty, json, or sarif).
-        #[arg(long, short, default_value = "pretty", value_enum)]
-        format: OutputFormat,
-
-        /// Treat warnings as errors (exit code 1 on warnings).
-        #[arg(long)]
-        strict: bool,
-
-        /// Path to a custom configuration file.
-        #[arg(long)]
-        config: Option<PathBuf>,
-
-        /// Fail if any agent's security score is below this threshold (0–100).
+        /// Fail if any skill's or agent's security score is below this threshold (0–100).
         #[arg(long, value_name = "N")]
         min_score: Option<u8>,
     },
@@ -139,8 +107,8 @@ pub enum Commands {
 
     /// List every built-in rule with its severity and description.
     ListRules {
-        /// Filter rules by audit mode: skill (default), agent, or all.
-        #[arg(long, default_value = "skill", value_enum)]
+        /// Filter rules by audit mode: skill, agent, or all (default).
+        #[arg(long, default_value = "all", value_enum)]
         mode: RuleMode,
     },
 

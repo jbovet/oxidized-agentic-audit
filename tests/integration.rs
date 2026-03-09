@@ -392,3 +392,108 @@ fn audit_secrets_skill_detects_leaked_key_when_gitleaks_available() {
         "Expected gitleaks to detect the fake AWS key in secrets-skill fixture"
     );
 }
+
+// ── --type agent: single-audit ────────────────────────────────────────────────
+
+#[test]
+fn audit_clean_agent_passes() {
+    oxidized_skills()
+        .args(["audit", "--type", "agent", "tests/fixtures/clean-agent"])
+        .assert()
+        .success()
+        .stdout(predicate::str::contains("PASS"));
+}
+
+#[test]
+fn audit_dirty_agent_fails() {
+    oxidized_skills()
+        .args(["audit", "--type", "agent", "tests/fixtures/dirty-agent"])
+        .assert()
+        .code(1)
+        .stdout(predicate::str::contains("FAIL"));
+}
+
+#[test]
+fn audit_dirty_agent_json_format() {
+    oxidized_skills()
+        .args([
+            "audit",
+            "--type",
+            "agent",
+            "tests/fixtures/dirty-agent",
+            "--format",
+            "json",
+        ])
+        .assert()
+        .code(1)
+        .stdout(predicate::str::contains("\"passed\": false"));
+}
+
+#[test]
+fn audit_suppressed_agent_passes() {
+    oxidized_skills()
+        .args([
+            "audit",
+            "--type",
+            "agent",
+            "tests/fixtures/suppressed-agent",
+        ])
+        .assert()
+        .success();
+}
+
+#[test]
+fn audit_agent_collection_dir_shows_hint_and_exits_2() {
+    // tests/fixtures/ has agent subdirs but no top-level AGENT.md.
+    oxidized_skills()
+        .args(["audit", "--type", "agent", "tests/fixtures"])
+        .assert()
+        .code(2)
+        .stderr(predicate::str::contains(
+            "looks like an agents collection directory",
+        ))
+        .stderr(predicate::str::contains("audit-all"));
+}
+
+// ── --type agent: audit-all ───────────────────────────────────────────────────
+
+#[test]
+fn audit_all_agents_discovers_agents_and_prints_summary() {
+    oxidized_skills()
+        .args(["audit-all", "--type", "agent", "tests/fixtures"])
+        .assert()
+        // dirty-agent fails — exit 1
+        .code(1)
+        .stdout(predicate::str::contains("Collection Summary"))
+        .stdout(predicate::str::contains("Total:"));
+}
+
+#[test]
+fn audit_all_agents_empty_dir_exits_2() {
+    let dir = tempfile::tempdir().unwrap();
+    oxidized_skills()
+        .args(["audit-all", "--type", "agent", dir.path().to_str().unwrap()])
+        .assert()
+        .code(2)
+        .stderr(predicate::str::contains("no agent directories found"));
+}
+
+#[test]
+fn audit_all_agents_exits_0_when_all_pass() {
+    let dir = tempfile::tempdir().unwrap();
+    for name in &["alpha", "beta"] {
+        let agent_dir = dir.path().join(name);
+        std::fs::create_dir_all(&agent_dir).unwrap();
+        std::fs::write(
+            agent_dir.join("AGENT.md"),
+            format!("---\nname: {name}\ndescription: A test agent. Use when testing.\nmodel: claude-sonnet-4-6\n---\n# Test\n"),
+        )
+        .unwrap();
+    }
+
+    oxidized_skills()
+        .args(["audit-all", "--type", "agent", dir.path().to_str().unwrap()])
+        .assert()
+        .success()
+        .stdout(predicate::str::contains("2 agents"));
+}

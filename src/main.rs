@@ -1,7 +1,7 @@
 mod cli;
 
 use clap::Parser;
-use cli::{Cli, Commands, RuleMode};
+use cli::{AuditType, Cli, Commands, RuleMode};
 use colored::Colorize;
 use oxidized_skills::{
     audit::{self, AuditMode},
@@ -16,32 +16,45 @@ fn main() {
     match cli.command {
         Commands::Audit {
             path,
+            audit_type,
             format,
             output: output_path,
             strict,
             config: config_path,
             min_score,
         } => {
+            let (mode, sentinel, entity, article) = audit_type_meta(audit_type);
             if !path.exists() {
                 eprintln!("Error: path does not exist: {}", path.display());
                 std::process::exit(2);
             }
 
             // Detect collection directories early to give a helpful error rather
-            // than a confusing "SKILL.md not found" failure on every scanner.
-            let skill_children = find_skill_dirs(&path);
-            if !path.join("SKILL.md").exists() && !skill_children.is_empty() {
+            // than a confusing sentinel-file-not-found failure on every scanner.
+            let children = find_artifact_dirs(&path, sentinel);
+            if !path.join(sentinel).exists() && !children.is_empty() {
                 eprintln!(
-                    "Error: '{}' looks like a skills collection directory, not a single skill.",
+                    "Error: '{}' looks like {} {}s collection directory, not a single {}.",
+                    path.display(),
+                    article,
+                    entity,
+                    entity
+                );
+                eprintln!();
+                eprintln!("To audit all {}s at once:", entity);
+                eprintln!(
+                    "  oxidized-skills audit-all --type {} {}",
+                    entity,
                     path.display()
                 );
                 eprintln!();
-                eprintln!("To audit all skills at once:");
-                eprintln!("  oxidized-skills audit-all {}", path.display());
-                eprintln!();
-                eprintln!("To audit a specific skill:");
-                for child in &skill_children {
-                    eprintln!("  oxidized-skills audit {}", child.display());
+                eprintln!("To audit a specific {}:", entity);
+                for child in &children {
+                    eprintln!(
+                        "  oxidized-skills audit --type {} {}",
+                        entity,
+                        child.display()
+                    );
                 }
                 std::process::exit(2);
             }
@@ -55,7 +68,7 @@ fn main() {
                 config.strict.enabled = true;
             }
 
-            let report = audit::run_audit(&path, &config, AuditMode::Skill);
+            let report = audit::run_audit(&path, &config, mode);
             let formatted = output::format_report(&report, &format);
 
             if let Some(out_path) = output_path {
@@ -83,6 +96,7 @@ fn main() {
 
         Commands::AuditAll {
             path,
+            audit_type,
             format,
             strict,
             config: config_path,
@@ -93,11 +107,15 @@ fn main() {
                 std::process::exit(2);
             }
 
-            let skill_dirs = find_skill_dirs(&path);
-            if skill_dirs.is_empty() {
+            let (mode, sentinel, entity, _article) = audit_type_meta(audit_type);
+
+            let dirs = find_artifact_dirs(&path, sentinel);
+            if dirs.is_empty() {
                 eprintln!(
-                    "Error: no skill directories found in '{}' (no subdirectory contains a SKILL.md)",
-                    path.display()
+                    "Error: no {} directories found in '{}' (no subdirectory contains a {})",
+                    entity,
+                    path.display(),
+                    sentinel,
                 );
                 std::process::exit(2);
             }
@@ -112,8 +130,8 @@ fn main() {
             }
 
             let mut reports: Vec<AuditReport> = Vec::new();
-            for skill_dir in &skill_dirs {
-                let report = audit::run_audit(skill_dir, &config, AuditMode::Skill);
+            for dir in &dirs {
+                let report = audit::run_audit(dir, &config, mode);
                 let formatted = output::format_report(&report, &format);
                 print!("{formatted}");
                 reports.push(report);
@@ -122,125 +140,7 @@ fn main() {
             if matches!(format, output::OutputFormat::Pretty) {
                 print!(
                     "{}",
-                    format_collection_summary(&path, &reports, min_score, "skill")
-                );
-            }
-
-            let all_passed = reports.iter().all(|r| r.passed);
-            let all_above_min = min_score
-                .map(|min| reports.iter().all(|r| r.security_score >= min))
-                .unwrap_or(true);
-            std::process::exit(if all_passed && all_above_min { 0 } else { 1 });
-        }
-
-        Commands::AuditAgent {
-            path,
-            format,
-            output: output_path,
-            strict,
-            config: config_path,
-            min_score,
-        } => {
-            if !path.exists() {
-                eprintln!("Error: path does not exist: {}", path.display());
-                std::process::exit(2);
-            }
-
-            // Detect collection directories early.
-            let agent_children = find_agent_dirs(&path);
-            if !path.join("AGENT.md").exists() && !agent_children.is_empty() {
-                eprintln!(
-                    "Error: '{}' looks like an agents collection directory, not a single agent.",
-                    path.display()
-                );
-                eprintln!();
-                eprintln!("To audit all agents at once:");
-                eprintln!("  oxidized-skills audit-all-agents {}", path.display());
-                eprintln!();
-                eprintln!("To audit a specific agent:");
-                for child in &agent_children {
-                    eprintln!("  oxidized-skills audit-agent {}", child.display());
-                }
-                std::process::exit(2);
-            }
-
-            let mut config = config::Config::load(config_path.as_deref()).unwrap_or_else(|e| {
-                eprintln!("Error: {e}");
-                std::process::exit(2);
-            });
-
-            if strict {
-                config.strict.enabled = true;
-            }
-
-            let report = audit::run_audit(&path, &config, AuditMode::Agent);
-            let formatted = output::format_report(&report, &format);
-
-            if let Some(out_path) = output_path {
-                std::fs::write(&out_path, &formatted).unwrap_or_else(|e| {
-                    eprintln!("Error writing output: {e}");
-                    std::process::exit(2);
-                });
-                eprintln!("Output written to {}", out_path.display());
-            } else {
-                print!("{formatted}");
-            }
-
-            if let Some(min) = min_score {
-                if report.security_score < min {
-                    eprintln!(
-                        "Error: security score {}/100 is below the required minimum of {}",
-                        report.security_score, min
-                    );
-                    std::process::exit(1);
-                }
-            }
-
-            std::process::exit(if report.passed { 0 } else { 1 });
-        }
-
-        Commands::AuditAllAgents {
-            path,
-            format,
-            strict,
-            config: config_path,
-            min_score,
-        } => {
-            if !path.exists() {
-                eprintln!("Error: path does not exist: {}", path.display());
-                std::process::exit(2);
-            }
-
-            let agent_dirs = find_agent_dirs(&path);
-            if agent_dirs.is_empty() {
-                eprintln!(
-                    "Error: no agent directories found in '{}' (no subdirectory contains an AGENT.md)",
-                    path.display()
-                );
-                std::process::exit(2);
-            }
-
-            let mut config = config::Config::load(config_path.as_deref()).unwrap_or_else(|e| {
-                eprintln!("Error: {e}");
-                std::process::exit(2);
-            });
-
-            if strict {
-                config.strict.enabled = true;
-            }
-
-            let mut reports: Vec<AuditReport> = Vec::new();
-            for agent_dir in &agent_dirs {
-                let report = audit::run_audit(agent_dir, &config, AuditMode::Agent);
-                let formatted = output::format_report(&report, &format);
-                print!("{formatted}");
-                reports.push(report);
-            }
-
-            if matches!(format, output::OutputFormat::Pretty) {
-                print!(
-                    "{}",
-                    format_collection_summary(&path, &reports, min_score, "agent")
+                    format_collection_summary(&path, &reports, min_score, entity)
                 );
             }
 
@@ -255,8 +155,16 @@ fn main() {
             println!("{}", "Scanner Availability".bold().underline());
             println!();
 
-            let all = scanners::all_scanners();
-            for scanner in &all {
+            // Deduplicate across skill and agent scanner sets so shared scanners
+            // appear once and both frontmatter variants are shown.
+            let mut seen = std::collections::HashSet::new();
+            let combined: Vec<Box<dyn scanners::Scanner>> = scanners::skill_scanners()
+                .into_iter()
+                .chain(scanners::agent_scanners())
+                .filter(|s| seen.insert(s.name().to_string()))
+                .collect();
+
+            for scanner in &combined {
                 let status = if scanner.is_available() {
                     "READY".green().bold().to_string()
                 } else {
@@ -280,12 +188,7 @@ fn main() {
             let rules = match mode {
                 RuleMode::Skill => scanners::all_rules(),
                 RuleMode::Agent => scanners::all_agent_rules(),
-                RuleMode::All => {
-                    let mut r = scanners::all_rules();
-                    // Add agent-only rules (agent_frontmatter) without duplicating shared rules.
-                    r.extend(scanners::agent_frontmatter::rules());
-                    r
-                }
+                RuleMode::All => scanners::all_unique_rules(),
             };
 
             let mode_label = match mode {
@@ -332,11 +235,7 @@ fn main() {
             let rules = match mode {
                 RuleMode::Skill => scanners::all_rules(),
                 RuleMode::Agent => scanners::all_agent_rules(),
-                RuleMode::All => {
-                    let mut r = scanners::all_rules();
-                    r.extend(scanners::agent_frontmatter::rules());
-                    r
-                }
+                RuleMode::All => scanners::all_unique_rules(),
             };
             match rules.iter().find(|r| r.id == rule_id) {
                 Some(rule) => {
@@ -359,27 +258,20 @@ fn main() {
     }
 }
 
-/// Returns immediate child directories of `path` that contain a `SKILL.md` file,
-/// sorted alphabetically by directory name.
-fn find_skill_dirs(path: &std::path::Path) -> Vec<std::path::PathBuf> {
-    let Ok(entries) = std::fs::read_dir(path) else {
-        return vec![];
-    };
-
-    let mut dirs: Vec<std::path::PathBuf> = entries
-        .filter_map(|e| e.ok())
-        .filter(|e| e.file_type().map(|t| t.is_dir()).unwrap_or(false))
-        .map(|e| e.path())
-        .filter(|p| p.join("SKILL.md").exists())
-        .collect();
-
-    dirs.sort();
-    dirs
+/// Maps an [`AuditType`] to its audit mode, sentinel filename, entity label, and article.
+///
+/// Returns `(AuditMode, sentinel, entity_label, article)` where `article` is
+/// the grammatically correct indefinite article ("a" or "an") for the entity.
+fn audit_type_meta(audit_type: AuditType) -> (AuditMode, &'static str, &'static str, &'static str) {
+    match audit_type {
+        AuditType::Skill => (AuditMode::Skill, "SKILL.md", "skill", "a"),
+        AuditType::Agent => (AuditMode::Agent, "AGENT.md", "agent", "an"),
+    }
 }
 
-/// Returns immediate child directories of `path` that contain an `AGENT.md` file,
+/// Returns immediate child directories of `path` that contain a file named `sentinel`,
 /// sorted alphabetically by directory name.
-fn find_agent_dirs(path: &std::path::Path) -> Vec<std::path::PathBuf> {
+fn find_artifact_dirs(path: &std::path::Path, sentinel: &str) -> Vec<std::path::PathBuf> {
     let Ok(entries) = std::fs::read_dir(path) else {
         return vec![];
     };
@@ -388,7 +280,7 @@ fn find_agent_dirs(path: &std::path::Path) -> Vec<std::path::PathBuf> {
         .filter_map(|e| e.ok())
         .filter(|e| e.file_type().map(|t| t.is_dir()).unwrap_or(false))
         .map(|e| e.path())
-        .filter(|p| p.join("AGENT.md").exists())
+        .filter(|p| p.join(sentinel).exists())
         .collect();
 
     dirs.sort();
