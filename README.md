@@ -14,7 +14,7 @@
   <!-- License -->
   <a href="LICENSE"><img src="https://img.shields.io/badge/license-MIT-blue.svg?style=flat-square" alt="MIT license"/></a>
   <!-- Docker -->
-  <a href="https://github.com/jbovet/oxidized-agentic-audit/pkgs/container/oxidized-agentic-audit"><img src="https://img.shields.io/badge/ghcr.io-oxidized--skills-0284C7?style=flat-square&logo=docker&logoColor=white" alt="GitHub Container Registry"/></a>
+  <a href="https://github.com/jbovet/oxidized-agentic-audit/pkgs/container/oxidized-agentic-audit"><img src="https://img.shields.io/badge/ghcr.io-oxidized--agentic--audit-0284C7?style=flat-square&logo=docker&logoColor=white" alt="GitHub Container Registry"/></a>
 </div>
 
 ---
@@ -46,14 +46,16 @@ The `oxidized-agentic-audit` GitHub Action audits skill and agent directories in
 
 | Input | Description | Required | Default |
 |---|---|---|---|
-| `skills-path` | Path to a single skill/agent directory or a collection directory containing multiple skills and agents. | No | `.` |
+| `path` | Path to a single skill/agent directory or a collection directory containing multiple subdirectories. | No | `.` |
+| `type` | What to audit: `skill` (looks for `SKILL.md`) or `agent` (looks for `AGENT.md`). | No | `skill` |
 | `version` | Version of oxidized-agentic-audit to download (e.g. `v0.4.0`). Use `latest` to always fetch the newest release. | No | `latest` |
 | `strict` | Treat warnings as errors. Exit code 1 on any warning. | No | `false` |
 | `fail-on-warnings` | Fail the action when warnings are present, even without errors. | No | `false` |
-| `min-score` | Minimum security score (0–100). Fails the action if any skill scores below this threshold. | No | `` |
+| `min-score` | Minimum security score (0–100). Fails the action if any skill/agent scores below this threshold. | No | `` |
 | `format` | Output format for the audit report. One of `pretty`, `json`, `sarif`. | No | `sarif` |
 | `sarif-output` | File path where the SARIF report will be written. | No | `oxidized-agentic-audit-report.sarif` |
 | `config` | Path to a custom `oxidized-agentic-audit.toml` configuration file. | No | `` |
+| `skip-download` | Use a binary already in `PATH`; skip release download. For CI jobs that build locally. | No | `false` |
 
 ### Outputs
 
@@ -65,12 +67,21 @@ The `oxidized-agentic-audit` GitHub Action audits skill and agent directories in
 
 ### Usage examples
 
-#### Basic — run on push and PR
+#### Audit skills (default)
 
 ```yaml
 - uses: jbovet/oxidized-agentic-audit@v0.4.0
   with:
-    skills-path: ./skills
+    path: ./skills
+```
+
+#### Audit agents
+
+```yaml
+- uses: jbovet/oxidized-agentic-audit@v0.4.0
+  with:
+    path: ./agents
+    type: agent
 ```
 
 #### Strict mode — block PR merge on any finding
@@ -78,7 +89,7 @@ The `oxidized-agentic-audit` GitHub Action audits skill and agent directories in
 ```yaml
 - uses: jbovet/oxidized-agentic-audit@v0.4.0
   with:
-    skills-path: ./skills
+    path: ./skills
     strict: 'true'
 ```
 
@@ -89,7 +100,7 @@ The `oxidized-agentic-audit` GitHub Action audits skill and agent directories in
 - uses: jbovet/oxidized-agentic-audit@v0.4.0
   id: audit
   with:
-    skills-path: ./skills
+    path: ./skills
 - uses: github/codeql-action/upload-sarif@v3
   if: always()
   with:
@@ -239,7 +250,8 @@ The frontmatter auditor validates both file types using the same 16 rules, check
 - `typescript`: Dangerous TypeScript/JavaScript patterns (code execution, shell access, credential reads, raw sockets, outbound HTTP).
 - `prompt`: Prompt injection patterns in `SKILL.md` and `AGENT.md`.
 - `package_install`: Unsafe package manager usage (pinned versions, registries).
-- `frontmatter`: `SKILL.md` and `AGENT.md` metadata quality and safety.
+- `frontmatter`: `SKILL.md` metadata quality and safety (skill audits).
+- `agent_frontmatter`: `AGENT.md` metadata quality and safety — agent-specific rules including bare tool access, unconstrained MCP servers, missing model, and system-prompt injection (agent audits).
 
 ### Semgrep Optimization
 Semgrep can be slow because it fetches rules from the registry by default. `oxidized-agentic-audit` optimizes this by:
@@ -337,6 +349,32 @@ Run `oxidized-agentic-audit check-tools` to see which external tools are availab
 | `frontmatter/bare-bash-tool` | Warning | Unscoped `Bash` in `allowed-tools` grants unrestricted shell access |
 | `frontmatter/description-no-trigger` | Info | Description doesn't include "when to use" trigger context |
 | `frontmatter/time-sensitive-content` | Warning | Body contains date-based conditional that will become stale (e.g. "before 2025") |
+
+### Agent Frontmatter (19 rules)
+
+Applies when auditing with `--type agent`. Validates `AGENT.md` structure and agentic security properties.
+
+| Rule | Severity | Description |
+|------|----------|-------------|
+| `agent/missing-agent-md` | Error | AGENT.md not found in agent root |
+| `agent/xml-in-frontmatter` | Error | XML/HTML angle brackets in `name`, `description`, or `system-prompt` — potential prompt injection vector |
+| `agent/name-reserved-word` | Error | Name contains reserved word `claude` or `anthropic` |
+| `agent/system-prompt-injection` | Error | `system-prompt` field contains a prompt injection pattern |
+| `agent/invalid-name-format` | Warning | Name must be lowercase-kebab-case |
+| `agent/name-too-long` | Warning | Name exceeds 64 characters |
+| `agent/name-too-vague` | Warning | Name uses a vague generic term (helper, utils, tools, data, etc.) |
+| `agent/description-missing` | Warning | Description field absent or empty |
+| `agent/description-too-long` | Warning | Description exceeds 1024 characters |
+| `agent/description-not-third-person` | Warning | Description uses first or second person instead of third person |
+| `agent/model-not-specified` | Warning | No `model` field in AGENT.md — implicit default may drift across releases |
+| `agent/bare-tool` | Warning | Unscoped `Bash` in `tools` grants unrestricted shell access |
+| `agent/system-prompt-too-long` | Warning | `system-prompt` exceeds 8000 characters |
+| `agent/unconstrained-mcp-server` | Warning | MCP server entry has no tool allowlist — grants access to all server tools |
+| `agent/agent-body-too-long` | Warning | AGENT.md exceeds 500 lines |
+| `agent/windows-path` | Warning | Windows-style backslash path in AGENT.md — use forward slashes |
+| `agent/time-sensitive-content` | Warning | Body contains a date-based conditional that will become stale (e.g. "before 2025") |
+| `agent/name-directory-mismatch` | Warning | `name` field does not match the containing directory name |
+| `agent/description-no-trigger` | Info | Description doesn't include "when to use" trigger context |
 
 ### TypeScript/JavaScript Patterns (Categories A-H)
 
@@ -469,6 +507,7 @@ bash_patterns = true
 typescript = true
 package_install = true
 frontmatter = true
+agent_frontmatter = true
 ```
 
 ### `.oxidized-agentic-audit-ignore`
