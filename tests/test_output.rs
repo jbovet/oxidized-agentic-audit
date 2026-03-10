@@ -209,6 +209,28 @@ fn clean_skill_json_shows_perfect_score() {
     );
 }
 
+/// Pretty output findings are sorted: errors first, then warnings, then info.
+#[test]
+fn pretty_output_findings_sorted_errors_before_warnings() {
+    // dirty-skill produces both errors and warnings — use it to verify sort order.
+    let report = get_dirty_report();
+    let pretty = output::format_report(&report, &OutputFormat::Pretty);
+    let stripped = strip_ansi(&pretty);
+
+    let first_error_pos = stripped
+        .find("[ERROR]")
+        .expect("dirty-skill should have at least one error finding");
+    let first_warn_pos = stripped
+        .find("[ WARN]")
+        .expect("dirty-skill should have at least one warning finding");
+
+    assert!(
+        first_error_pos < first_warn_pos,
+        "Errors must appear before warnings in pretty output \
+         (first ERROR at {first_error_pos}, first WARN at {first_warn_pos})"
+    );
+}
+
 /// Removes ANSI escape sequences so assertions on colored strings work reliably.
 fn strip_ansi(s: &str) -> String {
     let mut result = String::with_capacity(s.len());
