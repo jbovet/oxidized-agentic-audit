@@ -431,3 +431,99 @@ fn agent_frontmatter_disabled_in_config_shows_as_skipped_in_report() {
         "skip_reason should be 'disabled in config'"
     );
 }
+
+// ---------------------------------------------------------------------------
+// Rule: agent/name-leading-trailing-hyphen
+// ---------------------------------------------------------------------------
+
+#[test]
+fn agent_name_leading_hyphen_fires_warning() {
+    let dir = tempfile::tempdir().unwrap();
+    std::fs::write(
+        dir.path().join("AGENT.md"),
+        "---\nname: -my-agent\ndescription: Searches files. Use when the user needs to find files.\nmodel: claude-sonnet-4-6-thinking\n---\n",
+    ).unwrap();
+    let result = AgentFrontmatterScanner.scan(dir.path(), &Config::default());
+    assert!(
+        result
+            .findings
+            .iter()
+            .any(|f| f.rule_id == "agent/name-leading-trailing-hyphen"
+                && f.severity == Severity::Warning),
+        "Expected agent/name-leading-trailing-hyphen Warning for '-my-agent'"
+    );
+}
+
+#[test]
+fn agent_name_trailing_hyphen_fires_warning() {
+    let dir = tempfile::tempdir().unwrap();
+    std::fs::write(
+        dir.path().join("AGENT.md"),
+        "---\nname: my-agent-\ndescription: Searches files. Use when the user needs to find files.\nmodel: claude-sonnet-4-6-thinking\n---\n",
+    ).unwrap();
+    let result = AgentFrontmatterScanner.scan(dir.path(), &Config::default());
+    assert!(
+        result
+            .findings
+            .iter()
+            .any(|f| f.rule_id == "agent/name-leading-trailing-hyphen"
+                && f.severity == Severity::Warning),
+        "Expected agent/name-leading-trailing-hyphen Warning for 'my-agent-'"
+    );
+}
+
+#[test]
+fn agent_name_valid_no_leading_trailing_hyphen_no_finding() {
+    let dir = tempfile::tempdir().unwrap();
+    std::fs::write(
+        dir.path().join("AGENT.md"),
+        "---\nname: my-agent\ndescription: Searches files. Use when the user needs to find files.\nmodel: claude-sonnet-4-6-thinking\n---\n",
+    ).unwrap();
+    let result = AgentFrontmatterScanner.scan(dir.path(), &Config::default());
+    assert!(
+        !result
+            .findings
+            .iter()
+            .any(|f| f.rule_id == "agent/name-leading-trailing-hyphen"),
+        "agent/name-leading-trailing-hyphen must not fire for 'my-agent'"
+    );
+}
+
+// ---------------------------------------------------------------------------
+// Rule: agent/name-consecutive-hyphens
+// ---------------------------------------------------------------------------
+
+#[test]
+fn agent_name_consecutive_hyphens_fires_warning() {
+    let dir = tempfile::tempdir().unwrap();
+    std::fs::write(
+        dir.path().join("AGENT.md"),
+        "---\nname: my--agent\ndescription: Searches files. Use when the user needs to find files.\nmodel: claude-sonnet-4-6-thinking\n---\n",
+    ).unwrap();
+    let result = AgentFrontmatterScanner.scan(dir.path(), &Config::default());
+    assert!(
+        result
+            .findings
+            .iter()
+            .any(|f| f.rule_id == "agent/name-consecutive-hyphens"
+                && f.severity == Severity::Warning),
+        "Expected agent/name-consecutive-hyphens Warning for 'my--agent'"
+    );
+}
+
+#[test]
+fn agent_name_single_hyphens_no_consecutive_finding() {
+    let dir = tempfile::tempdir().unwrap();
+    std::fs::write(
+        dir.path().join("AGENT.md"),
+        "---\nname: my-pdf-agent\ndescription: Searches files. Use when the user needs to find files.\nmodel: claude-sonnet-4-6-thinking\n---\n",
+    ).unwrap();
+    let result = AgentFrontmatterScanner.scan(dir.path(), &Config::default());
+    assert!(
+        !result
+            .findings
+            .iter()
+            .any(|f| f.rule_id == "agent/name-consecutive-hyphens"),
+        "agent/name-consecutive-hyphens must not fire for 'my-pdf-agent'"
+    );
+}

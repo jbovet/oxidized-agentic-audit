@@ -27,6 +27,8 @@
 //! | `agent/time-sensitive-content`      | Warning | No date-conditional language |
 //! | `agent/name-directory-mismatch`     | Warning | `name` must match the directory name |
 //! | `agent/description-no-trigger`      | Info    | Should include "when to use" context |
+//! | `agent/name-leading-trailing-hyphen`| Warning | Name must not start or end with `-` |
+//! | `agent/name-consecutive-hyphens`    | Warning | Name must not contain `--` |
 
 use crate::config::Config;
 use crate::finding::{Finding, ScanResult, Severity};
@@ -380,6 +382,32 @@ fn validate_name(findings: &mut Vec<Finding>, name_val: &str, name_line: usize, 
             Severity::Warning,
             &format!("Agent name is {} chars — maximum is 64", name_char_count),
             "Shorten the agent name to 64 characters or fewer",
+            agent_md,
+            Some(name_line),
+        );
+    }
+
+    // Name must not start or end with a hyphen.
+    if name_val.starts_with('-') || name_val.ends_with('-') {
+        emit(
+            findings,
+            "agent/name-leading-trailing-hyphen",
+            Severity::Warning,
+            "Agent name starts or ends with a hyphen",
+            "Remove the leading/trailing hyphen from the agent name (e.g. 'my-agent' not '-my-agent')",
+            agent_md,
+            Some(name_line),
+        );
+    }
+
+    // Name must not contain consecutive hyphens.
+    if name_val.contains("--") {
+        emit(
+            findings,
+            "agent/name-consecutive-hyphens",
+            Severity::Warning,
+            "Agent name contains consecutive hyphens (--)",
+            "Replace consecutive hyphens with a single hyphen (e.g. 'my-agent' not 'my--agent')",
             agent_md,
             Some(name_line),
         );
@@ -918,6 +946,20 @@ pub fn rules() -> Vec<RuleInfo> {
             scanner: "agent_frontmatter",
             message: "Description doesn't include 'when to use' context",
             remediation: "Append 'Use when <specific trigger condition>.' to the description",
+        },
+        RuleInfo {
+            id: "agent/name-leading-trailing-hyphen",
+            severity: "warning",
+            scanner: "agent_frontmatter",
+            message: "Agent name starts or ends with a hyphen",
+            remediation: "Remove the leading/trailing hyphen from the agent name",
+        },
+        RuleInfo {
+            id: "agent/name-consecutive-hyphens",
+            severity: "warning",
+            scanner: "agent_frontmatter",
+            message: "Agent name contains consecutive hyphens (--)",
+            remediation: "Replace consecutive hyphens with a single hyphen",
         },
     ]
 }

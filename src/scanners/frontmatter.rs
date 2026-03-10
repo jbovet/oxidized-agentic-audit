@@ -24,6 +24,9 @@
 //! | `frontmatter/windows-path` | Warning | No backslash paths |
 //! | `frontmatter/time-sensitive-content` | Warning | No date-conditional language |
 //! | `frontmatter/name-directory-mismatch` | Warning | `name` must match the directory name |
+//! | `frontmatter/name-leading-trailing-hyphen` | Warning | Name must not start or end with `-` |
+//! | `frontmatter/name-consecutive-hyphens` | Warning | Name must not contain `--` |
+//! | `frontmatter/compatibility-too-long` | Warning | `compatibility` must be ≤ 500 characters |
 //!
 //! # Frontmatter parsing
 //!
@@ -54,6 +57,8 @@ struct FrontmatterData {
     name: Option<(String, usize)>,
     /// `description` field value and its 1-indexed line number.
     description: Option<(String, usize)>,
+    /// `compatibility` field value and its 1-indexed line number.
+    compatibility: Option<(String, usize)>,
     /// Each `allowed-tools` entry with its 1-indexed line number.
     allowed_tools: Vec<(String, usize)>,
 }
@@ -86,6 +91,38 @@ fn split_flow_sequence(inner: &str) -> Vec<&str> {
     items
 }
 
+/// Split a space-delimited tool list on spaces that are not inside parentheses.
+///
+/// This handles the agentskills.io spec's canonical `allowed-tools` scalar format:
+/// `Bash(git:*) Bash(jq:*) Read` → `["Bash(git:*)", "Bash(jq:*)", "Read"]`
+///
+/// A plain `val.split(' ')` would mangle tool names with arguments, e.g.
+/// `Bash(find dir)` → `["Bash(find", "dir)"]`.
+fn split_space_sequence(val: &str) -> Vec<&str> {
+    let mut items = Vec::new();
+    let mut depth = 0usize;
+    let mut start = 0;
+    for (i, c) in val.char_indices() {
+        match c {
+            '(' => depth += 1,
+            ')' => depth = depth.saturating_sub(1),
+            ' ' if depth == 0 => {
+                let item = val[start..i].trim();
+                if !item.is_empty() {
+                    items.push(item);
+                }
+                start = i + 1;
+            }
+            _ => {}
+        }
+    }
+    let last = val[start..].trim();
+    if !last.is_empty() {
+        items.push(last);
+    }
+    items
+}
+
 /// Parse the YAML frontmatter block from `content`.
 ///
 /// Returns `None` if the file does not begin with `---`.  The parser reads
@@ -102,6 +139,7 @@ fn parse_frontmatter(content: &str) -> Option<FrontmatterData> {
 
     let mut name: Option<(String, usize)> = None;
     let mut description: Option<(String, usize)> = None;
+    let mut compatibility: Option<(String, usize)> = None;
     let mut allowed_tools: Vec<(String, usize)> = Vec::new();
     // The key whose block-sequence items we are currently collecting.
     let mut current_key: Option<String> = None;
@@ -151,6 +189,9 @@ fn parse_frontmatter(content: &str) -> Option<FrontmatterData> {
                 "description" if !val.is_empty() => {
                     description = Some((val.to_string(), line_num));
                 }
+                "compatibility" if !val.is_empty() => {
+                    compatibility = Some((val.to_string(), line_num));
+                }
                 "allowed-tools" => {
                     if val.starts_with('[') && val.ends_with(']') {
                         // Flow sequence: `allowed-tools: [Bash, Write]`
@@ -161,8 +202,11 @@ fn parse_frontmatter(content: &str) -> Option<FrontmatterData> {
                             }
                         }
                     } else if !val.is_empty() {
-                        // Single scalar value: `allowed-tools: Bash`
-                        allowed_tools.push((val.to_string(), line_num));
+                        // Scalar value — may be a single tool (`Bash`) or the
+                        // spec's space-delimited list (`Bash(git:*) Bash(jq:*) Read`).
+                        for t in split_space_sequence(val) {
+                            allowed_tools.push((t.to_string(), line_num));
+                        }
                     }
                     // Empty value means a block sequence follows — handled above.
                 }
@@ -174,6 +218,7 @@ fn parse_frontmatter(content: &str) -> Option<FrontmatterData> {
     Some(FrontmatterData {
         name,
         description,
+        compatibility,
         allowed_tools,
     })
 }
@@ -302,6 +347,34 @@ fn validate_name(findings: &mut Vec<Finding>, name_val: &str, name_line: usize, 
         );
     }
 
+    // Rule: Name must not start or end with a hyphen.
+    // The agentskills.io spec states "Must not start or end with a hyphen".
+    if name_val.starts_with('-') || name_val.ends_with('-') {
+        emit_fm(
+            findings,
+            "frontmatter/name-leading-trailing-hyphen",
+            Severity::Warning,
+            "Skill name starts or ends with a hyphen",
+            "Remove the leading/trailing hyphen from the skill name (e.g. 'my-skill' not '-my-skill')",
+            skill_md,
+            Some(name_line),
+        );
+    }
+
+    // Rule: Name must not contain consecutive hyphens.
+    // The agentskills.io spec states "Must not contain consecutive hyphens (--)"
+    if name_val.contains("--") {
+        emit_fm(
+            findings,
+            "frontmatter/name-consecutive-hyphens",
+            Severity::Warning,
+            "Skill name contains consecutive hyphens (--)",
+            "Replace consecutive hyphens with a single hyphen (e.g. 'my-skill' not 'my--skill')",
+            skill_md,
+            Some(name_line),
+        );
+    }
+
     // Rule 10: Vague generic name segment.
     // Split the kebab-case name into tokens and check each against the list of
     // terms that provide no meaningful signal about what a skill does.
@@ -412,6 +485,36 @@ fn validate_description(
             "Append: 'Use when <specific trigger condition>.' to the description",
             skill_md,
             Some(desc_line),
+        );
+    }
+}
+
+/// Rule: validate the optional `compatibility` field.
+///
+/// The agentskills.io spec states the field "Must be 1–500 characters if provided".
+fn validate_compatibility(
+    findings: &mut Vec<Finding>,
+    compatibility: Option<&(String, usize)>,
+    skill_md: &Path,
+) {
+    let (compat_val, compat_line) = match compatibility {
+        Some((v, l)) if !v.trim().is_empty() => (v.as_str(), *l),
+        _ => return, // compatibility is optional; absence is fine
+    };
+
+    let compat_char_count = compat_val.chars().count();
+    if compat_char_count > 500 {
+        emit_fm(
+            findings,
+            "frontmatter/compatibility-too-long",
+            Severity::Warning,
+            &format!(
+                "Compatibility field is {} chars — maximum is 500",
+                compat_char_count
+            ),
+            "Shorten the compatibility field to 500 characters or fewer",
+            skill_md,
+            Some(compat_line),
         );
     }
 }
@@ -564,6 +667,7 @@ impl Scanner for FrontmatterScanner {
                 }
             }
             validate_allowed_tools(&mut findings, &fm.allowed_tools, &skill_md);
+            validate_compatibility(&mut findings, fm.compatibility.as_ref(), &skill_md);
         }
 
         // Description validation runs unconditionally — it covers both the
@@ -768,6 +872,27 @@ pub fn rules() -> Vec<RuleInfo> {
             scanner: "frontmatter",
             message: "Skill name does not match the containing directory name",
             remediation: "Rename the skill directory to match the 'name' field, or update 'name' to match the directory",
+        },
+        RuleInfo {
+            id: "frontmatter/name-leading-trailing-hyphen",
+            severity: "warning",
+            scanner: "frontmatter",
+            message: "Skill name starts or ends with a hyphen",
+            remediation: "Remove the leading/trailing hyphen from the skill name",
+        },
+        RuleInfo {
+            id: "frontmatter/name-consecutive-hyphens",
+            severity: "warning",
+            scanner: "frontmatter",
+            message: "Skill name contains consecutive hyphens (--)",
+            remediation: "Replace consecutive hyphens with a single hyphen",
+        },
+        RuleInfo {
+            id: "frontmatter/compatibility-too-long",
+            severity: "warning",
+            scanner: "frontmatter",
+            message: "Compatibility field exceeds 500 characters",
+            remediation: "Shorten the compatibility field to 500 characters or fewer",
         },
     ]
 }

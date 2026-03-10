@@ -1214,3 +1214,243 @@ fn comment_without_colon_inside_block_sequence_does_not_drop_items() {
         "Scoped Bash(find) with a plain comment must not fire bare-bash-tool"
     );
 }
+
+// ---------------------------------------------------------------------------
+// Rule: frontmatter/name-leading-trailing-hyphen
+// ---------------------------------------------------------------------------
+
+#[test]
+fn name_leading_hyphen_fires_warning() {
+    let dir = tempfile::tempdir().unwrap();
+    write_skill_md(
+        dir.path(),
+        "---\nname: -my-skill\ndescription: A skill. Use when needed.\nallowed-tools:\n  - Bash(find)\n---\n",
+    );
+    let result = scan_dir(dir.path());
+    let found = result
+        .findings
+        .iter()
+        .any(|f| f.rule_id == "frontmatter/name-leading-trailing-hyphen");
+    assert!(
+        found,
+        "Expected name-leading-trailing-hyphen for '-my-skill'"
+    );
+}
+
+#[test]
+fn name_trailing_hyphen_fires_warning() {
+    let dir = tempfile::tempdir().unwrap();
+    write_skill_md(
+        dir.path(),
+        "---\nname: my-skill-\ndescription: A skill. Use when needed.\nallowed-tools:\n  - Bash(find)\n---\n",
+    );
+    let result = scan_dir(dir.path());
+    let found = result
+        .findings
+        .iter()
+        .any(|f| f.rule_id == "frontmatter/name-leading-trailing-hyphen");
+    assert!(
+        found,
+        "Expected name-leading-trailing-hyphen for 'my-skill-'"
+    );
+}
+
+#[test]
+fn name_valid_no_leading_trailing_hyphen_no_finding() {
+    let dir = tempfile::tempdir().unwrap();
+    write_skill_md(
+        dir.path(),
+        "---\nname: my-skill\ndescription: A skill. Use when needed.\nallowed-tools:\n  - Bash(find)\n---\n",
+    );
+    let result = scan_dir(dir.path());
+    let found = result
+        .findings
+        .iter()
+        .any(|f| f.rule_id == "frontmatter/name-leading-trailing-hyphen");
+    assert!(
+        !found,
+        "name-leading-trailing-hyphen must not fire for 'my-skill'"
+    );
+}
+
+// ---------------------------------------------------------------------------
+// Rule: frontmatter/name-consecutive-hyphens
+// ---------------------------------------------------------------------------
+
+#[test]
+fn name_consecutive_hyphens_fires_warning() {
+    let dir = tempfile::tempdir().unwrap();
+    write_skill_md(
+        dir.path(),
+        "---\nname: my--skill\ndescription: A skill. Use when needed.\nallowed-tools:\n  - Bash(find)\n---\n",
+    );
+    let result = scan_dir(dir.path());
+    let found = result
+        .findings
+        .iter()
+        .any(|f| f.rule_id == "frontmatter/name-consecutive-hyphens");
+    assert!(found, "Expected name-consecutive-hyphens for 'my--skill'");
+}
+
+#[test]
+fn name_single_hyphens_no_consecutive_finding() {
+    let dir = tempfile::tempdir().unwrap();
+    write_skill_md(
+        dir.path(),
+        "---\nname: my-pdf-skill\ndescription: A skill. Use when needed.\nallowed-tools:\n  - Bash(find)\n---\n",
+    );
+    let result = scan_dir(dir.path());
+    let found = result
+        .findings
+        .iter()
+        .any(|f| f.rule_id == "frontmatter/name-consecutive-hyphens");
+    assert!(
+        !found,
+        "name-consecutive-hyphens must not fire for 'my-pdf-skill'"
+    );
+}
+
+// ---------------------------------------------------------------------------
+// Rule: frontmatter/bare-bash-tool — space-delimited allowed-tools (spec format)
+// ---------------------------------------------------------------------------
+
+#[test]
+fn allowed_tools_space_delimited_bare_bash_fires_warning() {
+    // `allowed-tools: Bash Read` — spec format, bare Bash must be detected.
+    let dir = tempfile::tempdir().unwrap();
+    write_skill_md(
+        dir.path(),
+        "---\nname: my-skill\ndescription: A skill. Use when needed.\nallowed-tools: Bash Read\n---\n",
+    );
+    let result = scan_dir(dir.path());
+    let found = result
+        .findings
+        .iter()
+        .any(|f| f.rule_id == "frontmatter/bare-bash-tool");
+    assert!(
+        found,
+        "bare-bash-tool must fire for unscoped 'Bash' in space-delimited spec format"
+    );
+}
+
+#[test]
+fn allowed_tools_space_delimited_scoped_only_no_finding() {
+    // `allowed-tools: Bash(git:*) Read` — spec format, scoped Bash must not fire.
+    let dir = tempfile::tempdir().unwrap();
+    write_skill_md(
+        dir.path(),
+        "---\nname: my-skill\ndescription: A skill. Use when needed.\nallowed-tools: Bash(git:*) Read\n---\n",
+    );
+    let result = scan_dir(dir.path());
+    let found = result
+        .findings
+        .iter()
+        .any(|f| f.rule_id == "frontmatter/bare-bash-tool");
+    assert!(
+        !found,
+        "bare-bash-tool must not fire for scoped 'Bash(git:*)' in space-delimited spec format"
+    );
+}
+
+#[test]
+fn allowed_tools_space_delimited_multiple_scoped_no_finding() {
+    // `allowed-tools: Bash(git:*) Bash(jq:*) Read` — all scoped, no finding.
+    let dir = tempfile::tempdir().unwrap();
+    write_skill_md(
+        dir.path(),
+        "---\nname: my-skill\ndescription: A skill. Use when needed.\nallowed-tools: Bash(git:*) Bash(jq:*) Read\n---\n",
+    );
+    let result = scan_dir(dir.path());
+    let found = result
+        .findings
+        .iter()
+        .any(|f| f.rule_id == "frontmatter/bare-bash-tool");
+    assert!(
+        !found,
+        "bare-bash-tool must not fire when all tools in space-delimited list are scoped"
+    );
+}
+
+#[test]
+fn allowed_tools_space_delimited_single_entry_backward_compatible() {
+    // `allowed-tools: Bash(find)` — single entry, should work as before (no bare-bash-tool).
+    let dir = tempfile::tempdir().unwrap();
+    write_skill_md(
+        dir.path(),
+        "---\nname: my-skill\ndescription: A skill. Use when needed.\nallowed-tools: Bash(find)\n---\n",
+    );
+    let result = scan_dir(dir.path());
+    let found = result
+        .findings
+        .iter()
+        .any(|f| f.rule_id == "frontmatter/bare-bash-tool");
+    assert!(
+        !found,
+        "Single scoped entry in scalar form must not fire bare-bash-tool"
+    );
+}
+
+// ---------------------------------------------------------------------------
+// Rule: frontmatter/compatibility-too-long
+// ---------------------------------------------------------------------------
+
+#[test]
+fn compatibility_too_long_fires_warning() {
+    let long_compat = "x".repeat(501);
+    let dir = tempfile::tempdir().unwrap();
+    write_skill_md(
+        dir.path(),
+        &format!(
+            "---\nname: my-skill\ndescription: A skill. Use when needed.\ncompatibility: {long_compat}\nallowed-tools:\n  - Bash(find)\n---\n"
+        ),
+    );
+    let result = scan_dir(dir.path());
+    let found = result
+        .findings
+        .iter()
+        .any(|f| f.rule_id == "frontmatter/compatibility-too-long");
+    assert!(
+        found,
+        "Expected compatibility-too-long for 501-char compatibility field"
+    );
+}
+
+#[test]
+fn compatibility_exactly_500_chars_no_finding() {
+    let compat_500 = "x".repeat(500);
+    let dir = tempfile::tempdir().unwrap();
+    write_skill_md(
+        dir.path(),
+        &format!(
+            "---\nname: my-skill\ndescription: A skill. Use when needed.\ncompatibility: {compat_500}\nallowed-tools:\n  - Bash(find)\n---\n"
+        ),
+    );
+    let result = scan_dir(dir.path());
+    let found = result
+        .findings
+        .iter()
+        .any(|f| f.rule_id == "frontmatter/compatibility-too-long");
+    assert!(
+        !found,
+        "500-char compatibility field is at limit — should not fire"
+    );
+}
+
+#[test]
+fn compatibility_absent_no_finding() {
+    // compatibility is optional — absence must not produce any finding.
+    let dir = tempfile::tempdir().unwrap();
+    write_skill_md(
+        dir.path(),
+        "---\nname: my-skill\ndescription: A skill. Use when needed.\nallowed-tools:\n  - Bash(find)\n---\n",
+    );
+    let result = scan_dir(dir.path());
+    let found = result
+        .findings
+        .iter()
+        .any(|f| f.rule_id == "frontmatter/compatibility-too-long");
+    assert!(
+        !found,
+        "Absent compatibility field must not fire compatibility-too-long"
+    );
+}

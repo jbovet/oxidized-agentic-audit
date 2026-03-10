@@ -96,12 +96,13 @@ pub fn format(report: &AuditReport) -> String {
     }
     out.push('\n');
 
-    // Active findings — use a peekable iterator to avoid allocating an
-    // intermediate Vec just to check emptiness before the single iteration.
-    let mut active_iter = report.findings.iter().filter(|f| !f.suppressed).peekable();
-    if active_iter.peek().is_some() {
+    // Active findings — collect into a Vec so we can sort by severity
+    // (errors first, then warnings, then info) before rendering.
+    let mut active: Vec<_> = report.findings.iter().filter(|f| !f.suppressed).collect();
+    if !active.is_empty() {
+        active.sort_by_key(|f| f.severity);
         out.push_str(&format!("{}\n", "Findings".bold().underline()));
-        for finding in active_iter {
+        for finding in active {
             let severity_str = match finding.severity {
                 Severity::Error => "ERROR".red().bold().to_string(),
                 Severity::Warning => " WARN".yellow().bold().to_string(),
