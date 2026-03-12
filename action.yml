@@ -272,9 +272,9 @@ runs:
         AUDIT_EXIT=0
 
         if [ "$MODE" = "single" ]; then
-          oxidized-agentic-audit audit "$AUDIT_PATH" --format json --output "$JSON_TMP" $FLAGS || AUDIT_EXIT=$?
+          oxidized-agentic-audit scan "$AUDIT_PATH" --format json --output "$JSON_TMP" $FLAGS || AUDIT_EXIT=$?
         else
-          oxidized-agentic-audit audit-all "$AUDIT_PATH" --format json $FLAGS > "$JSON_TMP" || AUDIT_EXIT=$?
+          oxidized-agentic-audit scan-all "$AUDIT_PATH" --format json $FLAGS > "$JSON_TMP" || AUDIT_EXIT=$?
         fi
 
         echo "audit_exit=$AUDIT_EXIT" >> "$GITHUB_OUTPUT"
@@ -339,11 +339,11 @@ runs:
         SARIF_OUT="${{ inputs.sarif-output }}"
 
         if [ "$MODE" = "single" ]; then
-          oxidized-agentic-audit audit "$AUDIT_PATH" --format sarif --output "$SARIF_OUT" $FLAGS || true
+          oxidized-agentic-audit scan "$AUDIT_PATH" --format sarif --output "$SARIF_OUT" $FLAGS || true
         else
-          # audit-all emits one SARIF document per entry to stdout.
+          # scan-all emits one SARIF document per entry to stdout.
           # Merge all runs[] arrays into a single valid SARIF document.
-          oxidized-agentic-audit audit-all "$AUDIT_PATH" --format sarif $FLAGS | python3 - "$SARIF_OUT" <<'PYEOF' || true
+          oxidized-agentic-audit scan-all "$AUDIT_PATH" --format sarif $FLAGS | python3 - "$SARIF_OUT" <<'PYEOF' || true
         import json, sys
 
         out_path = sys.argv[1]

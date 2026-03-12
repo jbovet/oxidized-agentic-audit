@@ -37,10 +37,10 @@ bash_patterns = true    # dangerous bash anti-patterns
 typescript = true       # dangerous TypeScript/JavaScript patterns
 package_install = true  # unsafe package installation patterns
 
-# Built-in scanners — skill audits only (audit / audit-all)
+# Built-in scanners — skill scans only (scan / scan-all)
 frontmatter = true      # SKILL.md frontmatter validation
 
-# Built-in scanners — agent audits only (audit-agent / audit-all-agents)
+# Built-in scanners — agent scans only (scan --type agent / scan-all --type agent)
 agent_frontmatter = true  # AGENT.md frontmatter validation
 
 [semgrep]

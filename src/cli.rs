@@ -43,9 +43,9 @@ pub enum RuleMode {
 /// Available subcommands.
 #[derive(Subcommand)]
 pub enum Commands {
-    /// Audit a single skill or agent directory for security issues.
-    Audit {
-        /// Path to the directory to audit.
+    /// Scan a single skill or agent directory for security issues.
+    Scan {
+        /// Path to the directory to scan.
         /// Must contain SKILL.md (--type skill) or AGENT.md (--type agent).
         path: PathBuf,
 
@@ -75,9 +75,9 @@ pub enum Commands {
         min_score: Option<u8>,
     },
 
-    /// Audit every skill or agent directory inside a collection directory.
-    #[command(name = "audit-all")]
-    AuditAll {
+    /// Scan every skill or agent directory inside a collection directory.
+    #[command(name = "scan-all")]
+    ScanAll {
         /// Path to a directory containing multiple skill or agent subdirectories.
         path: PathBuf,
 

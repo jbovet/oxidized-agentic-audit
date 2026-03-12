@@ -25,14 +25,14 @@ recommendation for every audit you perform.
 oxidized-agentic-audit check-tools
 
 # Audit a single skill — always use --strict for pre-deployment decisions
-oxidized-agentic-audit audit <path> --strict
-oxidized-agentic-audit audit <path> --strict --min-score <N>
-oxidized-agentic-audit audit <path> --format json          # structured output
-oxidized-agentic-audit audit <path> --format sarif --output report.sarif  # CI/CD
+oxidized-agentic-audit scan <path> --strict
+oxidized-agentic-audit scan <path> --strict --min-score <N>
+oxidized-agentic-audit scan <path> --format json          # structured output
+oxidized-agentic-audit scan <path> --format sarif --output report.sarif  # CI/CD
 
 # Audit all skills in a collection directory
-oxidized-agentic-audit audit-all <path> --strict
-oxidized-agentic-audit audit-all <path> --strict --min-score <N>
+oxidized-agentic-audit scan-all <path> --strict
+oxidized-agentic-audit scan-all <path> --strict --min-score <N>
 
 # Rule reference
 oxidized-agentic-audit list-rules                 # all rules with severity
@@ -97,7 +97,7 @@ means no hardcoded credential detection — always call this out explicitly.
 
 ### 2. Run the audit
 ```bash
-oxidized-agentic-audit audit <path> --strict
+oxidized-agentic-audit scan <path> --strict
 ```
 Use `--strict` for any deployment decision. Use `--min-score` when enforcing
 a quality bar (e.g., `--min-score 80` for a CI gate).
@@ -199,7 +199,7 @@ For GitHub Actions with SARIF upload:
 ```yaml
 - name: Audit skills
   run: |
-    oxidized-agentic-audit audit-all ./skills \
+    oxidized-agentic-audit scan-all ./skills \
       --strict \
       --min-score 80 \
       --format sarif \
@@ -219,7 +219,7 @@ When a user wants to install a skill from an external source:
 
 1. **Inspect before installing** — read the SKILL.md `allowed-tools` field:
    risky tools include `Bash(*)`, `Write(*)` (wildcards), or `Computer`.
-2. Run the full audit: `oxidized-agentic-audit audit <downloaded-path> --strict`
+2. Run the full audit: `oxidized-agentic-audit scan <downloaded-path> --strict`
 3. Pay extra attention to:
    - MCP server configurations (can establish persistent network connections)
    - Hook scripts (run on every Claude Code event, including `SessionStart`)
@@ -228,7 +228,7 @@ When a user wants to install a skill from an external source:
 
 ## Multi-skill comparison
 
-When auditing a collection with `audit-all`, summarize results as a table:
+When scanning a collection with `scan-all`, summarize results as a table:
 
 ```
 Skill                 Score  Grade  Risk      Errors  Warnings

@@ -7,6 +7,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Changed
+- **CLI commands renamed** — `audit` is now `scan` and `audit-all` is now `scan-all`. Internal types and suppression markers (`# audit:ignore`) remain unchanged.
+
 ## [0.4.0] - 2026-03-09
 
 ### Added

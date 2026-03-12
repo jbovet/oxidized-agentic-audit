@@ -12,8 +12,8 @@
 #
 # Usage:
 #   docker build -f Dockerfile.dev -t oxidized-agentic-audit:dev .
-#   docker run --rm -v ~/skills:/skills:ro oxidized-agentic-audit:dev audit-all /skills
-#   docker run --rm -v /path/to/skill:/skill:ro   oxidized-agentic-audit:dev audit /skill
+#   docker run --rm -v ~/skills:/skills:ro oxidized-agentic-audit:dev scan-all /skills
+#   docker run --rm -v /path/to/skill:/skill:ro   oxidized-agentic-audit:dev scan /skill
 #
 # NOTE: semgrep fetches rules from semgrep.dev on first run.  In
 # network-restricted environments it will time out after 30 s and be skipped

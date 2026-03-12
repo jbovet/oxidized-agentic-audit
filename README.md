@@ -29,7 +29,7 @@
 - **Shell script linting** — shellcheck wrapper, automatically skipped when tool is not installed
 - **Secret scanning** — gitleaks wrapper, automatically skipped when tool is not installed
 - **Static analysis** — semgrep wrapper with 30-second timeout (gracefully skips when network is blocked or tool is unavailable)
-- **Collection directory support** — `audit-all` audits every skill and agent in a directory at once with a summary table; `audit` detects collection directories and shows helpful hints
+- **Collection directory support** — `scan-all` scans every skill and agent in a directory at once with a summary table; `scan` detects collection directories and shows helpful hints
 - **Security score** — Every audit produces a numeric score (0–100) and letter grade (A–F); shown inline in the terminal, included as top-level fields in JSON, and embedded in `run.properties` in SARIF
 - **Multiple output formats** — Pretty terminal, JSON, and SARIF 2.1.0 (compatible with GitHub Code Scanning)
 - **Suppression system** — Inline `# audit:ignore` (or `# oxidized-agentic-audit:ignore`) trailing comments and `.oxidized-agentic-audit-ignore` file with ticket tracking
@@ -47,7 +47,7 @@ The `oxidized-agentic-audit` GitHub Action audits skill and agent directories in
 | Input | Description | Required | Default |
 |---|---|---|---|
 | `path` | Path to a single skill/agent directory or a collection directory containing multiple subdirectories. | No | `.` |
-| `type` | What to audit: `skill` (looks for `SKILL.md`) or `agent` (looks for `AGENT.md`). | No | `skill` |
+| `type` | What to scan: `skill` (looks for `SKILL.md`) or `agent` (looks for `AGENT.md`). | No | `skill` |
 | `version` | Version of oxidized-agentic-audit to download (e.g. `v0.4.0`). Use `latest` to always fetch the newest release. | No | `latest` |
 | `strict` | Treat warnings as errors. Exit code 1 on any warning. | No | `false` |
 | `fail-on-warnings` | Fail the action when warnings are present, even without errors. | No | `false` |
@@ -144,64 +144,64 @@ Download `oxidized-agentic-audit-windows-x86_64.zip` from [releases](https://git
 
 ## Usage
 
-### Audit a single skill or agent directory
+### Scan a single skill or agent directory
 
 ```bash
-# Audit a skill directory (default)
-oxidized-agentic-audit audit ./my-skill
+# Scan a skill directory (default)
+oxidized-agentic-audit scan ./my-skill
 
-# Audit an agent directory
-oxidized-agentic-audit audit ./my-agent --type agent
+# Scan an agent directory
+oxidized-agentic-audit scan ./my-agent --type agent
 
 # JSON output
-oxidized-agentic-audit audit ./my-skill --format json
+oxidized-agentic-audit scan ./my-skill --format json
 
 # SARIF output (for GitHub Code Scanning)
-oxidized-agentic-audit audit ./my-skill --format sarif --output report.sarif
+oxidized-agentic-audit scan ./my-skill --format sarif --output report.sarif
 
 # Strict mode (warnings become errors)
-oxidized-agentic-audit audit ./my-skill --strict
+oxidized-agentic-audit scan ./my-skill --strict
 
 # Quality gate — fail if score drops below 80
-oxidized-agentic-audit audit ./my-skill --min-score 80
+oxidized-agentic-audit scan ./my-skill --min-score 80
 
 # Custom config
-oxidized-agentic-audit audit ./my-skill --config ./my-config.toml
+oxidized-agentic-audit scan ./my-skill --config ./my-config.toml
 ```
 
-### Audit all skills or agents in a collection directory
+### Scan all skills or agents in a collection directory
 
 ```bash
-# Audits every subdirectory that contains a SKILL.md or AGENT.md, then prints a summary
-oxidized-agentic-audit audit-all ~/skills
+# Scans every subdirectory that contains a SKILL.md or AGENT.md, then prints a summary
+oxidized-agentic-audit scan-all ~/skills
 
-# Audit a collection of agents
-oxidized-agentic-audit audit-all ~/agents --type agent
+# Scan a collection of agents
+oxidized-agentic-audit scan-all ~/agents --type agent
 
 # JSON output per skill/agent
-oxidized-agentic-audit audit-all ~/skills --format json
+oxidized-agentic-audit scan-all ~/skills --format json
 
 # Strict mode across all skills/agents
-oxidized-agentic-audit audit-all ~/skills --strict
+oxidized-agentic-audit scan-all ~/skills --strict
 
 # Quality gate — fail if any skill/agent scores below 80
-oxidized-agentic-audit audit-all ~/skills --min-score 80
+oxidized-agentic-audit scan-all ~/skills --min-score 80
 ```
 
-If you accidentally run `audit` on a collection directory, the tool detects it and shows a helpful error with the correct commands to run.
+If you accidentally run `scan` on a collection directory, the tool detects it and shows a helpful error with the correct commands to run.
 
 ### Specifying skill vs. agent
 
-By default, `audit` and `audit-all` scan for **skill** directories (looking for `SKILL.md`). Use `--type agent` to audit **agent** directories (looking for `AGENT.md`):
+By default, `scan` and `scan-all` look for **skill** directories (looking for `SKILL.md`). Use `--type agent` to scan **agent** directories (looking for `AGENT.md`):
 
 ```bash
-# Default: audit skills
-oxidized-agentic-audit audit ./my-skill
-oxidized-agentic-audit audit-all ~/skills
+# Default: scan skills
+oxidized-agentic-audit scan ./my-skill
+oxidized-agentic-audit scan-all ~/skills
 
-# Audit agents explicitly
-oxidized-agentic-audit audit ./my-agent --type agent
-oxidized-agentic-audit audit-all ~/agents --type agent
+# Scan agents explicitly
+oxidized-agentic-audit scan ./my-agent --type agent
+oxidized-agentic-audit scan-all ~/agents --type agent
 ```
 
 ### Other commands
@@ -223,7 +223,7 @@ oxidized-agentic-audit explain bash/CAT-A1
 |------|---------|
 | 0 | Audit passed (all skills/agents passed) |
 | 1 | Audit failed (errors found, or warnings in strict mode) |
-| 2 | Runtime error (bad config, missing path, collection dir passed to `audit`, etc.) |
+| 2 | Runtime error (bad config, missing path, collection dir passed to `scan`, etc.) |
 
 ## Skills and Agents
 
@@ -548,18 +548,18 @@ wget https://approved-source.example.com/tool.tar.gz                       # oxi
 
 ```bash
 just docker-dev-build                         # build once
-just docker-dev ~/skills/my-skill      # audit a single skill
-just docker-dev-all ~/skills           # audit all skills
+just docker-dev ~/skills/my-skill      # scan a single skill
+just docker-dev-all ~/skills           # scan all skills
 ```
 
 Or with plain Docker:
 
 ```bash
 docker build -f Dockerfile.dev -t oxidized-agentic-audit:dev .
-docker run --rm -v ~/skills:/skills:ro oxidized-agentic-audit:dev audit-all /skills
+docker run --rm -v ~/skills:/skills:ro oxidized-agentic-audit:dev scan-all /skills
 
-# Audit agents instead of skills
-docker run --rm -v ~/agents:/agents:ro oxidized-agentic-audit:dev audit-all --type agent /agents
+# Scan agents instead of skills
+docker run --rm -v ~/agents:/agents:ro oxidized-agentic-audit:dev scan-all --type agent /agents
 ```
 
 ### Release images
@@ -598,37 +598,37 @@ docker pull ghcr.io/jbovet/oxidized-agentic-audit:slim
 # Audit a single skill directory
 docker run --rm \
   -v /path/to/skill:/skill:ro \
-  ghcr.io/jbovet/oxidized-agentic-audit:slim audit /skill
+  ghcr.io/jbovet/oxidized-agentic-audit:slim scan /skill
 
 # Audit a single agent directory
 docker run --rm \
   -v /path/to/agent:/agent:ro \
-  ghcr.io/jbovet/oxidized-agentic-audit:slim audit --type agent /agent
+  ghcr.io/jbovet/oxidized-agentic-audit:slim scan --type agent /agent
 
 # Audit all skills in a collection directory
 docker run --rm \
   -v ~/skills:/skills:ro \
-  ghcr.io/jbovet/oxidized-agentic-audit:slim audit-all /skills
+  ghcr.io/jbovet/oxidized-agentic-audit:slim scan-all /skills
 
 # Audit all agents in a collection directory
 docker run --rm \
   -v ~/agents:/agents:ro \
-  ghcr.io/jbovet/oxidized-agentic-audit:slim audit-all --type agent /agents
+  ghcr.io/jbovet/oxidized-agentic-audit:slim scan-all --type agent /agents
 
 # ── full image (shellcheck + gitleaks) ───────────────────────────────────────
 docker pull ghcr.io/jbovet/oxidized-agentic-audit:full
 
 docker run --rm \
   -v /path/to/skill:/skill:ro \
-  ghcr.io/jbovet/oxidized-agentic-audit:full audit /skill
+  ghcr.io/jbovet/oxidized-agentic-audit:full scan /skill
 
 docker run --rm \
   -v ~/skills:/skills:ro \
-  ghcr.io/jbovet/oxidized-agentic-audit:full audit-all /skills
+  ghcr.io/jbovet/oxidized-agentic-audit:full scan-all /skills
 
 ```
 
-> **Common mistake:** `docker run oxidized-agentic-audit audit ~/skills` will fail with
+> **Common mistake:** `docker run oxidized-agentic-audit scan ~/skills` will fail with
 > `Error: path does not exist` — the container cannot see your home directory.
 > Always use `-v ~/skills:/skills:ro` and pass `/skills` as the argument.
 
@@ -639,7 +639,7 @@ docker run --rm \
   -v /path/to/skill:/skill:ro \
   -v "$(pwd)":/out \
   ghcr.io/jbovet/oxidized-agentic-audit:full \
-  audit /skill --format sarif --output /out/report.sarif
+  scan /skill --format sarif --output /out/report.sarif
 ```
 
 ### Build locally
@@ -664,7 +664,7 @@ just docker-run-all ~/skills
   run: |
     docker run --rm \
       -v ${{ github.workspace }}/skills:/skills:ro \
-      ghcr.io/jbovet/oxidized-agentic-audit:full audit-all /skills
+      ghcr.io/jbovet/oxidized-agentic-audit:full scan-all /skills
 ```
 
 ## Development

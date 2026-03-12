@@ -27,29 +27,29 @@ metadata:
 
 # Security Auditing for Agent Skills
 
-Run `oxidized-agentic-audit audit <path>` to scan a skill directory. The tool checks shell scripts, SKILL.md frontmatter, prompt injection vectors, and package install patterns.
+Run `oxidized-agentic-audit scan<path>` to scan a skill directory. The tool checks shell scripts, SKILL.md frontmatter, prompt injection vectors, and package install patterns.
 
 ## Quick start
 
 ```bash
 # Single skill
-oxidized-agentic-audit audit ./path/to/skill
+oxidized-agentic-audit scan ./path/to/skill
 
 # All skills in a collection directory
-oxidized-agentic-audit audit-all ./path/to/skills/
+oxidized-agentic-audit scan-all ./path/to/skills/
 ```
 
 ## Output formats
 
 ```bash
 # Human-readable terminal output (default)
-oxidized-agentic-audit audit ./skill
+oxidized-agentic-audit scan ./skill
 
 # Machine-readable JSON
-oxidized-agentic-audit audit ./skill --format json
+oxidized-agentic-audit scan ./skill --format json
 
 # SARIF 2.1.0 for GitHub Code Scanning
-oxidized-agentic-audit audit ./skill --format sarif --output report.sarif
+oxidized-agentic-audit scan ./skill --format sarif --output report.sarif
 ```
 
 ## Strict mode
@@ -57,7 +57,7 @@ oxidized-agentic-audit audit ./skill --format sarif --output report.sarif
 Treat warnings as errors (exit code 1 on any warning):
 
 ```bash
-oxidized-agentic-audit audit ./skill --strict
+oxidized-agentic-audit scan ./skill --strict
 ```
 
 ## Score threshold (CI gate)
@@ -65,14 +65,14 @@ oxidized-agentic-audit audit ./skill --strict
 Fail if the security score falls below a minimum (0–100):
 
 ```bash
-oxidized-agentic-audit audit ./skill --strict --min-score 80
-oxidized-agentic-audit audit-all ./skills/ --strict --min-score 80
+oxidized-agentic-audit scan ./skill --strict --min-score 80
+oxidized-agentic-audit scan-all ./skills/ --strict --min-score 80
 ```
 
 ## Custom configuration
 
 ```bash
-oxidized-agentic-audit audit ./skill --config ./oxidized-agentic-audit.toml
+oxidized-agentic-audit scan ./skill --config ./oxidized-agentic-audit.toml
 ```
 
 ## Utility commands
@@ -126,7 +126,7 @@ oxidized-agentic-audit check-tools
 
 **Step 2: Full strict audit**
 ```bash
-oxidized-agentic-audit audit ./skill --strict
+oxidized-agentic-audit scan ./skill --strict
 ```
 
 **Step 3: Interpret** — Exit code 0 = ready to deploy. Any other exit code: proceed to Step 4.

@@ -14,7 +14,7 @@ fn main() {
     let cli = Cli::parse();
 
     match cli.command {
-        Commands::Audit {
+        Commands::Scan {
             path,
             audit_type,
             format,
@@ -41,17 +41,17 @@ fn main() {
                     entity
                 );
                 eprintln!();
-                eprintln!("To audit all {}s at once:", entity);
+                eprintln!("To scan all {}s at once:", entity);
                 eprintln!(
-                    "  oxidized-agentic-audit audit-all --type {} {}",
+                    "  oxidized-agentic-audit scan-all --type {} {}",
                     entity,
                     path.display()
                 );
                 eprintln!();
-                eprintln!("To audit a specific {}:", entity);
+                eprintln!("To scan a specific {}:", entity);
                 for child in &children {
                     eprintln!(
-                        "  oxidized-agentic-audit audit --type {} {}",
+                        "  oxidized-agentic-audit scan --type {} {}",
                         entity,
                         child.display()
                     );
@@ -94,7 +94,7 @@ fn main() {
             std::process::exit(if report.passed { 0 } else { 1 });
         }
 
-        Commands::AuditAll {
+        Commands::ScanAll {
             path,
             audit_type,
             format,
