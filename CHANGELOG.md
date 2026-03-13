@@ -7,8 +7,16 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.5.0] - 2026-03-12
+
 ### Changed
-- **CLI commands renamed** — `audit` is now `scan` and `audit-all` is now `scan-all`. Internal types and suppression markers (`# audit:ignore`) remain unchanged.
+- **Breaking: Full terminology migration from 'audit' to 'scan'** — The `audit` command and its related internal components have been renamed to `scan` throughout the codebase.
+    - CLI subcommands `audit` and `audit-all` are now `scan` and `scan-all`.
+    - Internal types renamed: `AuditReport` → `ScanReport`, `AuditStatus` → `ScanStatus`, `AuditMode` → `ScanMode`.
+    - Internal functions renamed: `run_audit` → `run_scan`, `compute_audit_metrics` → `compute_scan_metrics`.
+    - File renamed: `src/audit.rs` is now [scan.rs](src/scan.rs).
+    - Added support for `# scan:ignore` suppression markers (backward compatibility for `# audit:ignore` is maintained).
+    - Updated documentation, help messages, and GitHub Action to use consistent "scanning" terminology.
 
 ## [0.4.0] - 2026-03-09
 
@@ -109,7 +117,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - **Docker images** — slim (~8 MB, scratch base) and full (~245 MB, includes shellcheck + gitleaks + semgrep) variants published to GHCR
 - **CI/CD** — GitHub Actions workflows for CI (test + lint + fmt) and release (binaries + Docker images)
 
-[Unreleased]: https://github.com/jbovet/oxidized-agentic-audit/compare/v0.3.1...HEAD
+[Unreleased]: https://github.com/jbovet/oxidized-agentic-audit/compare/v0.5.0...HEAD
+[0.5.0]: https://github.com/jbovet/oxidized-agentic-audit/compare/v0.4.0...v0.5.0
+[0.4.0]: https://github.com/jbovet/oxidized-agentic-audit/compare/v0.3.1...v0.4.0
 [0.3.1]: https://github.com/jbovet/oxidized-agentic-audit/compare/v0.3.0...v0.3.1
 [0.3.0]: https://github.com/jbovet/oxidized-agentic-audit/compare/v0.2.0...v0.3.0
 [0.2.0]: https://github.com/jbovet/oxidized-agentic-audit/compare/v0.1.1...v0.2.0

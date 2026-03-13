@@ -141,7 +141,7 @@ Suppression requests require your security judgment, not automatic approval.
 
 ### Inline suppression
 ```bash
-some-command  # audit:ignore
+some-command  # scan:ignore (or # audit:ignore)
 ```
 Acceptable only when:
 - The pattern is a test fixture or intentional demo of a dangerous pattern

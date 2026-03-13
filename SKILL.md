@@ -15,7 +15,7 @@ sample-prompts:
   - "audit all skills in this directory"
 metadata:
   author: jbovet
-  version: 0.4.0
+  version: 0.5.0
   license: MIT
   tags:
     - security
@@ -154,8 +154,8 @@ When findings are reported:
 **Suppressing intentional findings** (requires justification):
 ```bash
 # Trailing inline comment on any shell line:
-some-command  # audit:ignore
-
+some-command  # scan:ignore (or # audit:ignore)
+ 
 # Or use .oxidized-agentic-audit-ignore for file/line-scoped suppression with ticket tracking
 ```
 

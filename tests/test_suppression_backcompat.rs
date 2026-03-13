@@ -1,7 +1,6 @@
 use oxidized_agentic_audit::config::Config;
 use oxidized_agentic_audit::scanners::bash_patterns::BashPatternScanner;
 use oxidized_agentic_audit::scanners::Scanner;
-use std::path::Path;
 
 #[test]
 fn test_inline_suppression_backcompat() {

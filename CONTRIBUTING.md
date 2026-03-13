@@ -58,7 +58,7 @@ just fmt      # auto-format
 just lint     # clippy -D warnings
 just test     # cargo test
 just ci       # fmt-check + lint + test (mirrors CI)
-just audit    # run the tool against its own test fixtures
+just scan     # run the tool against its own test fixtures
 ```
 
 ### External tools (optional)

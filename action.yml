@@ -20,7 +20,7 @@ inputs:
     required: false
     default: 'skill'
   version:
-    description: Version of oxidized-agentic-audit to download (e.g. "v0.1.1"). Use "latest" to always fetch the newest release.
+    description: Version of oxidized-agentic-audit to download (e.g. "v0.5.0"). Use "latest" to always fetch the newest release.
     required: false
     default: 'latest'
   strict:
