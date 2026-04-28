@@ -263,9 +263,10 @@ impl Scanner for TypeScriptScanner {
 
         // Guard: PATTERNS and PATTERN_SET must stay in sync.
         // Out-of-sync arrays cause an index-out-of-bounds panic when a line
-        // matches an index that exceeds PATTERNS.len().  This assert fires in
-        // debug/test builds, catching the mismatch at development time.
-        debug_assert_eq!(
+        // matches an index that exceeds PATTERNS.len().  Use `assert_eq!`
+        // (not `debug_assert_eq!`) so the invariant is enforced in release
+        // builds as well.
+        assert_eq!(
             PATTERNS.len(),
             PATTERN_SET.len(),
             "typescript PATTERNS and PATTERN_SET are out of sync — add/remove from both arrays"
