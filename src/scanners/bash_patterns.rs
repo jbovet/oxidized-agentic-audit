@@ -235,8 +235,8 @@ static PATTERN_SET: LazyLock<RegexSet> = LazyLock::new(|| {
         r#"(?i)\beval\s*["'`\$\(]"#,
         // CAT-A3
         r"(?i)\bsource\s*<\s*\(\s*(curl|wget|fetch)",
-        // CAT-A4
-        r"(?i)(curl|wget).+/tmp/.+&&\s*(bash|sh|exec)",
+        // CAT-A4: download-to-tmp-then-execute — catches both `&&` and `;` chaining.
+        r"(?i)(curl|wget).+/tmp/.+(?:&&|;)\s*(bash|sh|exec)",
         // CAT-B1: SSH key access — env vars, tilde, AND hard-coded /root or /home/<user>
         r"(\$\{?HOME\}?|~|/root|/home/[^/\s]+)/\.ssh/",
         // CAT-B2: AWS credential access
@@ -308,9 +308,10 @@ impl Scanner for BashPatternScanner {
 
         // Guard: PATTERNS and PATTERN_SET must stay in sync.
         // If they drift (e.g. a pattern added to one but not the other) the
-        // indexing below will panic at runtime.  This assert fires immediately
-        // in debug/test builds so the mismatch is caught at development time.
-        debug_assert_eq!(
+        // indexing below will panic at runtime with an index-out-of-bounds.
+        // Use `assert_eq!` (not `debug_assert_eq!`) so the invariant is
+        // enforced in release builds as well.
+        assert_eq!(
             PATTERNS.len(),
             PATTERN_SET.len(),
             "bash PATTERNS and PATTERN_SET are out of sync — add/remove from both arrays"
