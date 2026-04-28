@@ -110,6 +110,9 @@ pub struct ScannersConfig {
     /// Malicious URL detection — shorteners, paste sites, IP literals,
     /// suspicious TLDs, non-HTTPS (built-in).
     pub malicious_urls: bool,
+    /// Obfuscation detection — base64, hex, and high-entropy payloads
+    /// hidden in markdown prose (built-in).
+    pub obfuscation: bool,
     /// SKILL.md frontmatter validation (built-in).
     pub frontmatter: bool,
     /// AGENT.md frontmatter validation (built-in).
@@ -185,6 +188,7 @@ impl Default for ScannersConfig {
             typescript: true,
             package_install: true,
             malicious_urls: true,
+            obfuscation: true,
             frontmatter: true,
             agent_frontmatter: true,
         }
@@ -279,6 +283,7 @@ impl Config {
             "typescript" | "typescript_patterns" => self.scanners.typescript,
             "package_install" => self.scanners.package_install,
             "malicious_urls" => self.scanners.malicious_urls,
+            "obfuscation" => self.scanners.obfuscation,
             "frontmatter" => self.scanners.frontmatter,
             "agent_frontmatter" => self.scanners.agent_frontmatter,
             _ => true,
