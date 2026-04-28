@@ -15,6 +15,7 @@
 pub mod agent_frontmatter;
 pub mod bash_patterns;
 pub mod frontmatter;
+pub mod malicious_urls;
 pub mod package_install;
 pub mod prompt;
 pub mod secrets;
@@ -85,6 +86,7 @@ pub fn skill_scanners() -> Vec<Box<dyn Scanner>> {
         Box::new(bash_patterns::BashPatternScanner),
         Box::new(typescript::TypeScriptScanner),
         Box::new(package_install::PackageInstallScanner),
+        Box::new(malicious_urls::MaliciousUrlsScanner),
         Box::new(frontmatter::FrontmatterScanner),
         Box::new(shellcheck::ShellCheckScanner),
         Box::new(secrets::SecretsScanner),
@@ -103,6 +105,7 @@ pub fn agent_scanners() -> Vec<Box<dyn Scanner>> {
         Box::new(bash_patterns::BashPatternScanner),
         Box::new(typescript::TypeScriptScanner),
         Box::new(package_install::PackageInstallScanner),
+        Box::new(malicious_urls::MaliciousUrlsScanner),
         Box::new(agent_frontmatter::AgentFrontmatterScanner),
         Box::new(shellcheck::ShellCheckScanner),
         Box::new(secrets::SecretsScanner),
@@ -515,6 +518,7 @@ pub fn all_rules() -> Vec<RuleInfo> {
     rules.extend(typescript::rules());
     rules.extend(prompt::rules());
     rules.extend(package_install::rules());
+    rules.extend(malicious_urls::rules());
     rules.extend(frontmatter::rules());
     rules.extend(shellcheck::rules());
     rules.extend(secrets::rules());
@@ -545,6 +549,7 @@ pub fn all_agent_rules() -> Vec<RuleInfo> {
     rules.extend(typescript::rules());
     rules.extend(prompt::rules());
     rules.extend(package_install::rules());
+    rules.extend(malicious_urls::rules());
     rules.extend(agent_frontmatter::rules());
     rules.extend(shellcheck::rules());
     rules.extend(secrets::rules());
