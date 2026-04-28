@@ -113,6 +113,9 @@ pub struct ScannersConfig {
     /// Obfuscation detection — base64, hex, and high-entropy payloads
     /// hidden in markdown prose (built-in).
     pub obfuscation: bool,
+    /// PII detection — emails, SSNs, credit cards (Luhn-validated),
+    /// private IPs, and internal hostnames (built-in).
+    pub pii: bool,
     /// SKILL.md frontmatter validation (built-in).
     pub frontmatter: bool,
     /// AGENT.md frontmatter validation (built-in).
@@ -189,6 +192,7 @@ impl Default for ScannersConfig {
             package_install: true,
             malicious_urls: true,
             obfuscation: true,
+            pii: true,
             frontmatter: true,
             agent_frontmatter: true,
         }
@@ -284,6 +288,7 @@ impl Config {
             "package_install" => self.scanners.package_install,
             "malicious_urls" => self.scanners.malicious_urls,
             "obfuscation" => self.scanners.obfuscation,
+            "pii" => self.scanners.pii,
             "frontmatter" => self.scanners.frontmatter,
             "agent_frontmatter" => self.scanners.agent_frontmatter,
             _ => true,
