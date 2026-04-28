@@ -74,6 +74,15 @@ fn make_snippet(line: &str) -> String {
     }
 }
 
+fn redact_pii(line: &str) -> String {
+    let redacted = RE_EMAIL.replace_all(line, "<redacted email>");
+    let redacted = RE_SSN.replace_all(&redacted, "XXX-XX-XXXX");
+    let redacted = RE_CC.replace_all(&redacted, "<redacted credit card>");
+    let redacted = RE_IPV4.replace_all(&redacted, "<redacted private ipv4>");
+    let redacted = RE_INTERNAL_HOST.replace_all(&redacted, "<redacted internal hostname>");
+    redacted.to_string()
+}
+
 #[allow(clippy::too_many_arguments)]
 fn emit(
     findings: &mut Vec<Finding>,
@@ -93,7 +102,7 @@ fn emit(
         line: Some(line_num),
         column: None,
         scanner: "pii".to_string(),
-        snippet: Some(make_snippet(line)),
+        snippet: Some(make_snippet(&redact_pii(line))),
         suppressed: false,
         suppression_reason: None,
         remediation: Some(remediation.to_string()),
@@ -250,7 +259,7 @@ impl Scanner for PiiScanner {
                         &mut findings,
                         "pii/P1-email",
                         Severity::Warning,
-                        format!("Hardcoded email address: {addr}"),
+                        "Hardcoded email address".to_string(),
                         "Replace with a placeholder (user@example.com) or move the address to a runtime configuration.",
                         file,
                         line_num,
@@ -270,7 +279,7 @@ impl Scanner for PiiScanner {
                         &mut findings,
                         "pii/P2-ssn",
                         Severity::Error,
-                        format!("US SSN-formatted number: {area:03}-{group:02}-XXXX"),
+                        "US SSN-formatted number (redacted)".to_string(),
                         "Remove the SSN. If a placeholder is needed, use 000-00-0000 or 123-45-6789.",
                         file,
                         line_num,
@@ -284,15 +293,13 @@ impl Scanner for PiiScanner {
                         if luhn_valid(&digits) {
                             // Skip if the same run is also a Luhn-valid IPv4-like token —
                             // RE_CC requires 13+ digits so plain IPv4s never reach here.
-                            let last4 = &digits[digits.len() - 4..];
                             emit(
                                 &mut findings,
                                 "pii/P3-credit-card",
                                 Severity::Error,
                                 format!(
-                                    "Luhn-valid credit-card number ({} digits, ending {}): redact",
-                                    digits.len(),
-                                    last4
+                                    "Luhn-valid credit-card number ({} digits, redacted)",
+                                    digits.len()
                                 ),
                                 "Remove the card number. Use 4242 4242 4242 4242 (Stripe test card) for examples.",
                                 file,
@@ -318,7 +325,7 @@ impl Scanner for PiiScanner {
                             &mut findings,
                             "pii/P4-private-ipv4",
                             Severity::Info,
-                            format!("Private IPv4 address: {a}.{b}.{c}.{d}"),
+                            "Private IPv4 address".to_string(),
                             "Internal addresses leak network topology. Replace with a placeholder or move into runtime config.",
                             file,
                             line_num,
@@ -328,13 +335,12 @@ impl Scanner for PiiScanner {
                 }
 
                 // P5 — internal hostname
-                for m in RE_INTERNAL_HOST.find_iter(line) {
-                    let host = m.as_str();
+                for _m in RE_INTERNAL_HOST.find_iter(line) {
                     emit(
                         &mut findings,
                         "pii/P5-internal-host",
                         Severity::Warning,
-                        format!("Internal hostname: {host}"),
+                        "Internal hostname".to_string(),
                         "Hostnames in internal TLDs leak infrastructure. Move into runtime config or replace with a placeholder.",
                         file,
                         line_num,

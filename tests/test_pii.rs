@@ -68,6 +68,36 @@ fn fixture_flags_real_email_only() {
 }
 
 #[test]
+fn pii_findings_do_not_expose_raw_values() {
+    let result = scan_fixture("pii-skill");
+    let raw_values = [
+        "alice.smith@acme-industries.com",
+        "charlie@acme-industries.com",
+        "456-78-9012",
+        "4242 4242 4242 4242",
+        "10.0.0.5",
+        "192.168.50.7",
+        "api.prod.corp",
+        "db-primary.intranet",
+    ];
+
+    for finding in &result.findings {
+        for raw in raw_values {
+            assert!(
+                !finding.message.contains(raw),
+                "PII finding message leaked raw sensitive value: {raw}"
+            );
+            if let Some(snippet) = &finding.snippet {
+                assert!(
+                    !snippet.contains(raw),
+                    "PII finding snippet leaked raw sensitive value: {raw}"
+                );
+            }
+        }
+    }
+}
+
+#[test]
 fn fixture_flags_real_ssn_as_error() {
     let result = scan_fixture("pii-skill");
     let ssn: Vec<_> = result
