@@ -100,17 +100,18 @@ fn pii_findings_do_not_expose_raw_values() {
 #[test]
 fn fixture_flags_real_ssn_as_error() {
     let result = scan_fixture("pii-skill");
-    let ssn: Vec<_> = result
+    let ssn_findings: Vec<_> = result
         .findings
         .iter()
         .filter(|f| f.rule_id == "pii/P2-ssn")
         .collect();
     assert_eq!(
-        ssn.len(),
+        ssn_findings.len(),
         1,
-        "expected exactly 1 P2-ssn finding (456-78-9012); got: {ssn:?}"
+        "expected exactly 1 P2-ssn finding; got: {} findings",
+        ssn_findings.len()
     );
-    assert_eq!(ssn[0].severity, Severity::Error);
+    assert_eq!(ssn_findings[0].severity, Severity::Error);
 }
 
 #[test]
