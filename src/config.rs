@@ -107,6 +107,15 @@ pub struct ScannersConfig {
     pub typescript: bool,
     /// Unsafe package installation detection (built-in).
     pub package_install: bool,
+    /// Malicious URL detection — shorteners, paste sites, IP literals,
+    /// suspicious TLDs, non-HTTPS (built-in).
+    pub malicious_urls: bool,
+    /// Obfuscation detection — base64, hex, and high-entropy payloads
+    /// hidden in markdown prose (built-in).
+    pub obfuscation: bool,
+    /// PII detection — emails, SSNs, credit cards (Luhn-validated),
+    /// private IPs, and internal hostnames (built-in).
+    pub pii: bool,
     /// SKILL.md frontmatter validation (built-in).
     pub frontmatter: bool,
     /// AGENT.md frontmatter validation (built-in).
@@ -181,6 +190,9 @@ impl Default for ScannersConfig {
             bash_patterns: true,
             typescript: true,
             package_install: true,
+            malicious_urls: true,
+            obfuscation: true,
+            pii: true,
             frontmatter: true,
             agent_frontmatter: true,
         }
@@ -274,6 +286,9 @@ impl Config {
             // Accept both names for the config key. The scanner's reported name is "typescript_patterns"
             "typescript" | "typescript_patterns" => self.scanners.typescript,
             "package_install" => self.scanners.package_install,
+            "malicious_urls" => self.scanners.malicious_urls,
+            "obfuscation" => self.scanners.obfuscation,
+            "pii" => self.scanners.pii,
             "frontmatter" => self.scanners.frontmatter,
             "agent_frontmatter" => self.scanners.agent_frontmatter,
             _ => true,
