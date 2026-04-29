@@ -105,12 +105,7 @@ fn fixture_flags_real_ssn_as_error() {
         .iter()
         .filter(|f| f.rule_id == "pii/P2-ssn")
         .collect();
-    assert_eq!(
-        ssn_findings.len(),
-        1,
-        "expected exactly 1 P2-ssn finding; got: {} findings",
-        ssn_findings.len()
-    );
+    assert!(ssn_findings.len() == 1, "expected exactly 1 P2-ssn finding");
     assert_eq!(ssn_findings[0].severity, Severity::Error);
 }
 
