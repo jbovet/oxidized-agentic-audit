@@ -26,6 +26,10 @@
 - **Prompt injection scanner** — 19 patterns detecting instruction override, role manipulation, jailbreak attempts, data exfiltration, code injection, system prompt extraction, delimiter injection, fictional framing, and priority override; automatically skips benign boilerplate files (LICENSE, CHANGELOG, NOTICE, AUTHORS, etc.)
 - **Frontmatter scanner** — 16 rules validating `SKILL.md` and `AGENT.md` structure: missing file, reserved brand names, XML injection in fields, name format and directory-name match, field length limits, vague names, body length, Windows paths, third-person description, trigger context, time-sensitive content, and unscoped `Bash` in `allowed-tools`
 - **Package install scanner** — Detects `npm install`, `bun add`, `yarn add`, `pnpm add`, `pip install` without explicit registry, unpinned `@latest` versions, and unapproved registries (7 rules)
+- **Malicious URL scanner** — 5 rules detecting URL shorteners, paste/anonymous-upload sites, IP literals, high-abuse TLDs (`.tk`, `.top`, `.xyz`, etc.), and plain `http://` links
+- **Obfuscation scanner** — 3 rules detecting base64 blobs (≥ 60 chars), hex blobs (≥ 40 chars), and high-entropy tokens (> 4.5 bits/char) hidden in markdown prose outside fenced code blocks
+- **PII scanner** — 5 rules detecting hardcoded emails, US SSNs (SSA-invalid ranges excluded), Luhn-valid credit-card numbers, RFC 1918/loopback/link-local IPs, and internal hostnames (`.internal`, `.corp`, `.local`, `.lan`, `.intranet`); sensitive values are redacted from scan output
+- **Script-mixing scanner** — 3 rules detecting Greek/Cyrillic homoglyphs masquerading as Latin characters, bidirectional text-direction override marks (RTL/LTR), and mixed Unicode scripts in frontmatter identifiers
 - **Shell script linting** — shellcheck wrapper, automatically skipped when tool is not installed
 - **Secret scanning** — gitleaks wrapper, automatically skipped when tool is not installed
 - **Static analysis** — semgrep wrapper with 30-second timeout (gracefully skips when network is blocked or tool is unavailable)
@@ -252,6 +256,10 @@ The frontmatter scanner validates both file types using the same 16 rules, check
 - `package_install`: Unsafe package manager usage (pinned versions, registries).
 - `frontmatter`: `SKILL.md` metadata quality and safety (skill scans).
 - `agent_frontmatter`: `AGENT.md` metadata quality and safety — agent-specific rules including bare tool access, unconstrained MCP servers, missing model, and system-prompt injection (agent scans).
+- `malicious_urls`: URL shorteners, paste sites, IP literals, high-abuse TLDs, and insecure `http://` links.
+- `obfuscation`: Base64 blobs, hex blobs, and high-entropy tokens hidden in markdown prose.
+- `pii`: Hardcoded emails, SSNs, credit-card numbers, private IPs, and internal hostnames; sensitive values are redacted from findings.
+- `script_mixing`: Homoglyph substitutions, bidirectional text-direction overrides, and mixed Unicode scripts in frontmatter identifiers.
 
 ### Semgrep Optimization
 Semgrep can be slow because it fetches rules from the registry by default. `oxidized-agentic-audit` optimizes this by:
@@ -405,6 +413,44 @@ Applies when scanning with `--type agent`. Validates `AGENT.md` structure and ag
 | `pkg/F2-unpinned` | Warning | @latest unpinned version |
 | `pkg/F3-registry` | Warning | Unapproved registry URL |
 
+### Malicious URLs (5 rules)
+
+| Rule | Severity | Description |
+|------|----------|-------------|
+| `url/U1-shortener` | Warning | URL shortener obscures the real destination |
+| `url/U2-paste` | Error | URL points to a paste/anonymous-upload site |
+| `url/U3-ip-literal` | Warning | URL uses a raw IP literal instead of a hostname |
+| `url/U4-suspicious-tld` | Warning | URL host uses a high-abuse TLD (`.tk`, `.top`, `.xyz`, etc.) |
+| `url/U5-non-https` | Warning | Insecure `http://` URL |
+
+### Obfuscation (3 rules)
+
+| Rule | Severity | Description |
+|------|----------|-------------|
+| `obfusc/O1-base64` | Warning | Suspicious base64 token (≥ 60 chars) in prose outside a fenced code block |
+| `obfusc/O2-hex-blob` | Warning | Suspicious hex blob (≥ 40 chars) in prose outside a fenced code block |
+| `obfusc/O3-high-entropy` | Warning | High-entropy token (> 4.5 bits/char) in prose outside a fenced code block |
+
+### PII (5 rules)
+
+PII findings redact sensitive values from both the `message` and `snippet` fields so raw emails, SSNs, and card numbers are never written to scan reports.
+
+| Rule | Severity | Description |
+|------|----------|-------------|
+| `pii/P1-email` | Warning | Hardcoded email address (test/placeholder addresses excluded) |
+| `pii/P2-ssn` | Error | US SSN-formatted number (SSA-invalid ranges excluded) |
+| `pii/P3-credit-card` | Error | Luhn-valid credit-card number |
+| `pii/P4-private-ipv4` | Info | Private IPv4 address (RFC 1918, loopback, link-local) |
+| `pii/P5-internal-host` | Warning | Internal hostname (`.internal`, `.corp`, `.local`, `.lan`, `.intranet`) |
+
+### Script Mixing (3 rules)
+
+| Rule | Severity | Description |
+|------|----------|-------------|
+| `script/SM1-homoglyph` | Warning | Visually-confusing homoglyph substitution (e.g., Greek ο masquerading as Latin o) |
+| `script/SM2-bidi-override` | Error | Bidirectional text-direction override marks (RTL/LTR override) |
+| `script/SM3-mixed-scripts` | Warning | Mixed Unicode scripts in frontmatter identifiers |
+
 ## Security Score
 
 Every scan computes a numeric security score (0–100) and a letter grade (A–F) based on the active (non-suppressed) findings.
@@ -508,6 +554,10 @@ typescript = true
 package_install = true
 frontmatter = true
 agent_frontmatter = true
+malicious_urls = true
+obfuscation = true
+pii = true
+script_mixing = true
 ```
 
 ### `.oxidized-agentic-audit-ignore`
