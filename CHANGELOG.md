@@ -7,6 +7,22 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.6.0] - 2026-04-29
+
+### Added
+- **Malicious URL scanner** — new `malicious_urls` scanner detects risky URL patterns in skills and agents, flagging common attack vectors and suspicious domains.
+- **Obfuscation scanner** — new `obfuscation` scanner detects encoded payloads in markdown prose, identifying base64, hex, and other encoded attack patterns.
+- **PII scanner** — new `pii` scanner detects personally identifiable information including emails, SSNs, credit cards, private IP addresses, and internal hostnames.
+- **Script-mixing scanner** — new `script_mixing` scanner detects homoglyphs and bidirectional text attacks that can disguise malicious code.
+- **PII redaction** — PII findings are now redacted to prevent exposure of raw values in messages and snippets.
+
+### Fixed
+- **PATTERNS and PATTERN_SET synchronization** — fixed inconsistencies in bash and typescript scanner pattern definitions.
+- **SSN finding assertions** — improved clarity and correctness in test assertions for Social Security Number detection.
+
+### Documentation
+- Updated README with information about all new scanners (malicious URL, obfuscation, PII, script-mixing).
+
 ## [0.5.0] - 2026-03-12
 
 ### Changed

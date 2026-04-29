@@ -1,6 +1,6 @@
 [package]
 name = "oxidized-agentic-audit"
-version = "0.5.0"
+version = "0.6.0"
 edition = "2021"
 rust-version = "1.80"
 authors = ["jbovet"]
@@ -21,7 +21,7 @@ exclude = [
     "SKILL.md",
     "SECURITY.md",
     ".github/",
-    ".githooks/"
+    ".githooks/",
 ]
 
 [[bin]]
